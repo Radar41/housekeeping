@@ -1,0 +1,19 @@
+[paths]
+home = "/home/radar-41-0"
+layout = "/home/radar-41-0/LAYOUT.md"
+logs = "logs"
+
+[atlas]
+dsn_env = "ATLAS_DSN"
+
+[mover]
+moves_log = "logs/moves.tsv"
+quarantine = "/home/radar-41-0/quarantine"
+
+[checker]
+protected_names_file = "/home/radar-41-0/projects/housekeeping/protected_names.txt"
+
+[intake]
+machine = "winbox"
+target_root = "/home/radar-41-0/inbox"
+sources = []

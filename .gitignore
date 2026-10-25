@@ -3,3 +3,5 @@
 logs/
 __pycache__/
 *.pyc
+config.toml
+protected_names.txt
