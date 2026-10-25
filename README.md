@@ -8,6 +8,7 @@ partial
 
 ## How to run
 make run, make test, make slurm (added as modules land)
+- `make run MOD=mover ARGS="plan table.csv"`; `apply table.csv --apply [--push]`; `undo logs/moves.tsv [--since ISO] --apply`. Dry-run unless --apply.
 
 ## Depends on
 Atlas (Postgres/pgvector on head), SLURM, Python 3.12 with uv

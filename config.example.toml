@@ -9,6 +9,7 @@ dsn_env = "ATLAS_DSN"
 [mover]
 moves_log = "logs/moves.tsv"
 quarantine = "/home/radar-41-0/quarantine"
+protected_dir = "/home/radar-41-0/protected"
 
 [checker]
 protected_names_file = "/home/radar-41-0/projects/housekeeping/protected_names.txt"
