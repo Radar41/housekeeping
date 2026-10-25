@@ -8,6 +8,7 @@ partial
 
 ## How to run
 make run, make test, make slurm (added as modules land)
+`uv run hk checker <repo>...` or `uv run hk checker --all <dir>` checks repos against STANDARDS.md (add `--json`)
 
 ## Depends on
 Atlas (Postgres/pgvector on head), SLURM, Python 3.12 with uv
