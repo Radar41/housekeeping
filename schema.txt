@@ -1,0 +1,3446 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict amPf9Ku7tATKWU1mJPeMU0RTU6Skkav0pWbrGOC09CTzrOGHjpbOBTZzaLKTuNh
+
+-- Dumped from database version 16.15 (Ubuntu 16.15-1.pgdg26.04+2)
+-- Dumped by pg_dump version 16.15 (Ubuntu 16.15-1.pgdg26.04+2)
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: atlas; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA atlas;
+
+
+--
+-- Name: vector; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION vector; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION vector IS 'vector data type and ivfflat and hnsw access methods';
+
+
+--
+-- Name: algebra_tier; Type: TYPE; Schema: atlas; Owner: -
+--
+
+CREATE TYPE atlas.algebra_tier AS ENUM (
+    'tier1_closure',
+    'tier2_nonassoc',
+    'tier3_graded',
+    'tier4_monodromic',
+    'tier5_categorical'
+);
+
+
+--
+-- Name: asana_section; Type: TYPE; Schema: atlas; Owner: -
+--
+
+CREATE TYPE atlas.asana_section AS ENUM (
+    'captured',
+    'scoped',
+    'specified',
+    'approved_for_drafting',
+    'drafted',
+    'approved_for_execution',
+    'executing',
+    'awaiting_review',
+    'accepted',
+    'rejected',
+    'failed',
+    'deferred',
+    'archived'
+);
+
+
+--
+-- Name: axiom_state; Type: TYPE; Schema: atlas; Owner: -
+--
+
+CREATE TYPE atlas.axiom_state AS ENUM (
+    'required',
+    'false',
+    'open',
+    'unneeded'
+);
+
+
+--
+-- Name: coupling_kind; Type: TYPE; Schema: atlas; Owner: -
+--
+
+CREATE TYPE atlas.coupling_kind AS ENUM (
+    'echoes',
+    'generalizes',
+    'specializes',
+    'contradicts',
+    'extends_evidence',
+    're_observes',
+    'surfaces_pending',
+    'decouples',
+    'implies_unregistered'
+);
+
+
+--
+-- Name: fp_outcome; Type: TYPE; Schema: atlas; Owner: -
+--
+
+CREATE TYPE atlas.fp_outcome AS ENUM (
+    'convergent',
+    'bounded_oscillation',
+    'divergent',
+    'trivial_collapse'
+);
+
+
+--
+-- Name: observer_class; Type: TYPE; Schema: atlas; Owner: -
+--
+
+CREATE TYPE atlas.observer_class AS ENUM (
+    'display',
+    'ingestion',
+    'orchestrator',
+    'audit'
+);
+
+
+--
+-- Name: status_label; Type: TYPE; Schema: atlas; Owner: -
+--
+
+CREATE TYPE atlas.status_label AS ENUM (
+    'specified',
+    'dry_run_committed',
+    'operator_validated',
+    'locally_executable',
+    'pending_integration',
+    'external_disclosure_prohibited',
+    'deprecated_alias'
+);
+
+
+--
+-- Name: view_profile_t; Type: TYPE; Schema: atlas; Owner: -
+--
+
+CREATE TYPE atlas.view_profile_t AS ENUM (
+    'employee',
+    'contractor',
+    'external_recipient',
+    'public'
+);
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: affixion_strength; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.affixion_strength (
+    glyph text NOT NULL,
+    value integer NOT NULL,
+    notes text
+);
+
+
+--
+-- Name: asana_project; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.asana_project (
+    id bigint NOT NULL,
+    asana_gid text NOT NULL,
+    name text NOT NULL,
+    workspace_gid text DEFAULT '952160553655161'::text NOT NULL,
+    team_gid text,
+    is_preamble boolean DEFAULT false NOT NULL,
+    canonical_replacement_id bigint,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: asana_project_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.asana_project_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: asana_project_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.asana_project_id_seq OWNED BY atlas.asana_project.id;
+
+
+--
+-- Name: asana_task; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.asana_task (
+    id bigint NOT NULL,
+    asana_gid text NOT NULL,
+    project_id bigint NOT NULL,
+    section atlas.asana_section NOT NULL,
+    name text NOT NULL,
+    notes_md text,
+    structural jsonb,
+    status_label atlas.status_label,
+    domain_id bigint,
+    target_kind text,
+    target_id bigint,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: asana_task_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.asana_task_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: asana_task_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.asana_task_id_seq OWNED BY atlas.asana_task.id;
+
+
+--
+-- Name: atlas_a; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_a (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    slot_key text NOT NULL,
+    label text NOT NULL,
+    tier atlas.algebra_tier NOT NULL,
+    axiom_profile jsonb DEFAULT '{}'::jsonb NOT NULL,
+    magma_ops jsonb,
+    d06_fingerprint jsonb,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_a_edges; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_a_edges (
+    id bigint NOT NULL,
+    src_a_id bigint NOT NULL,
+    dst_a_id bigint NOT NULL,
+    morphism text NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_a_edges_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_a_edges_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_a_edges_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_a_edges_id_seq OWNED BY atlas.atlas_a_edges.id;
+
+
+--
+-- Name: atlas_a_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_a_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_a_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_a_id_seq OWNED BY atlas.atlas_a.id;
+
+
+--
+-- Name: atlas_c; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_c (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    slot_key text NOT NULL,
+    label text NOT NULL,
+    expr text NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_c_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_c_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_c_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_c_id_seq OWNED BY atlas.atlas_c.id;
+
+
+--
+-- Name: atlas_chunk; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_chunk (
+    chunk_id bigint NOT NULL,
+    document_id bigint NOT NULL,
+    chunk_index integer NOT NULL,
+    chunk_text text NOT NULL,
+    token_estimate integer,
+    sha256 text NOT NULL,
+    chunk_metadata jsonb
+);
+
+
+--
+-- Name: COLUMN atlas_chunk.chunk_metadata; Type: COMMENT; Schema: atlas; Owner: -
+--
+
+COMMENT ON COLUMN atlas.atlas_chunk.chunk_metadata IS 'Optional structured metadata for derived chunks, including header-only structured data summaries.';
+
+
+--
+-- Name: atlas_chunk_chunk_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_chunk_chunk_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_chunk_chunk_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_chunk_chunk_id_seq OWNED BY atlas.atlas_chunk.chunk_id;
+
+
+--
+-- Name: atlas_doc_code_link; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_doc_code_link (
+    link_id bigint NOT NULL,
+    doc_document_id bigint NOT NULL,
+    code_document_id bigint NOT NULL,
+    confidence double precision NOT NULL,
+    rationale text,
+    method text DEFAULT 'llm_v1'::text NOT NULL,
+    model text NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT atlas_doc_code_link_confidence_check CHECK (((confidence >= (0)::double precision) AND (confidence <= (1)::double precision))),
+    CONSTRAINT atlas_doc_code_link_status_check CHECK ((status = ANY (ARRAY['active'::text, 'superseded'::text])))
+);
+
+
+--
+-- Name: atlas_doc_code_link_link_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_doc_code_link_link_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_doc_code_link_link_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_doc_code_link_link_id_seq OWNED BY atlas.atlas_doc_code_link.link_id;
+
+
+--
+-- Name: atlas_doc_code_queue; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_doc_code_queue (
+    queue_id bigint NOT NULL,
+    doc_document_id bigint NOT NULL,
+    candidates jsonb NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    worker text,
+    last_error text,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT atlas_doc_code_queue_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'processing'::text, 'done'::text, 'failed'::text])))
+);
+
+
+--
+-- Name: atlas_doc_code_queue_queue_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_doc_code_queue_queue_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_doc_code_queue_queue_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_doc_code_queue_queue_id_seq OWNED BY atlas.atlas_doc_code_queue.queue_id;
+
+
+--
+-- Name: atlas_doc_relevance; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_doc_relevance (
+    document_id bigint NOT NULL,
+    project text NOT NULL,
+    score double precision NOT NULL,
+    method text DEFAULT 'keyword_v1'::text NOT NULL,
+    schema_version integer DEFAULT 1 NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT atlas_doc_relevance_score CHECK ((score >= (0.0)::double precision)),
+    CONSTRAINT atlas_doc_relevance_status CHECK ((status = ANY (ARRAY['active'::text, 'superseded'::text])))
+);
+
+
+--
+-- Name: atlas_document; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_document (
+    document_id bigint NOT NULL,
+    root_id bigint NOT NULL,
+    rel_path text NOT NULL,
+    file_type text,
+    sha256 text,
+    size_bytes bigint,
+    mtime timestamp with time zone,
+    indexed_at timestamp with time zone,
+    status text NOT NULL,
+    path_depth integer,
+    parent_rel_path text,
+    ancestor_rel_paths text[],
+    version_status text,
+    CONSTRAINT atlas_document_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'indexed'::text, 'stale'::text, 'missing'::text, 'failed'::text]))),
+    CONSTRAINT atlas_document_version_status CHECK (((version_status IS NULL) OR (version_status = ANY (ARRAY['canonical'::text, 'superseded_by_version'::text, 'sibling_duplicate'::text]))))
+);
+
+
+--
+-- Name: COLUMN atlas_document.path_depth; Type: COMMENT; Schema: atlas; Owner: -
+--
+
+COMMENT ON COLUMN atlas.atlas_document.path_depth IS 'DSF lineage depth from the atlas root: files directly under the root are depth 0.';
+
+
+--
+-- Name: COLUMN atlas_document.parent_rel_path; Type: COMMENT; Schema: atlas; Owner: -
+--
+
+COMMENT ON COLUMN atlas.atlas_document.parent_rel_path IS 'Immediate parent directory relative to atlas root; NULL for files directly under the root.';
+
+
+--
+-- Name: COLUMN atlas_document.ancestor_rel_paths; Type: COMMENT; Schema: atlas; Owner: -
+--
+
+COMMENT ON COLUMN atlas.atlas_document.ancestor_rel_paths IS 'Ordered ancestor directory chain relative to atlas root, root-to-parent; NULL until populated.';
+
+
+--
+-- Name: atlas_document_document_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_document_document_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_document_document_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_document_document_id_seq OWNED BY atlas.atlas_document.document_id;
+
+
+--
+-- Name: atlas_dup_cluster; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_dup_cluster (
+    cluster_id bigint NOT NULL,
+    document_id bigint NOT NULL,
+    role text DEFAULT 'member'::text NOT NULL,
+    evidence jsonb DEFAULT '{}'::jsonb NOT NULL,
+    schema_version integer DEFAULT 1 NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT atlas_dup_cluster_role CHECK ((role = ANY (ARRAY['exemplar'::text, 'member'::text]))),
+    CONSTRAINT atlas_dup_cluster_status CHECK ((status = ANY (ARRAY['active'::text, 'superseded'::text])))
+);
+
+
+--
+-- Name: atlas_e; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_e (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    slot_key text NOT NULL,
+    label text NOT NULL,
+    occurred_at timestamp with time zone,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_e_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_e_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_e_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_e_id_seq OWNED BY atlas.atlas_e.id;
+
+
+--
+-- Name: atlas_embed_queue; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_embed_queue (
+    queue_id bigint NOT NULL,
+    document_id bigint,
+    chunk_id bigint,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    last_error text,
+    last_attempt_at timestamp with time zone,
+    status text NOT NULL,
+    CONSTRAINT atlas_embed_queue_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'retry'::text, 'failed'::text, 'resolved'::text])))
+);
+
+
+--
+-- Name: atlas_embed_queue_queue_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_embed_queue_queue_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_embed_queue_queue_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_embed_queue_queue_id_seq OWNED BY atlas.atlas_embed_queue.queue_id;
+
+
+--
+-- Name: atlas_embedding; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_embedding (
+    id bigint NOT NULL,
+    target_kind text NOT NULL,
+    target_id bigint NOT NULL,
+    model text DEFAULT 'Qwen/Qwen3-Embedding-4B'::text NOT NULL,
+    dim integer DEFAULT 2560 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    embedding public.vector(2560) NOT NULL,
+    CONSTRAINT atlas_embedding_dim_check CHECK ((dim = 2560))
+);
+
+
+--
+-- Name: atlas_embedding_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_embedding_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_embedding_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_embedding_id_seq OWNED BY atlas.atlas_embedding.id;
+
+
+--
+-- Name: atlas_embedding_orphan_archive_dfsa_full_sweep_20260730_rev3; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_embedding_orphan_archive_dfsa_full_sweep_20260730_rev3 (
+    id bigint DEFAULT nextval('atlas.atlas_embedding_id_seq'::regclass) NOT NULL,
+    target_kind text NOT NULL,
+    target_id bigint NOT NULL,
+    model text DEFAULT 'Qwen/Qwen3-Embedding-4B'::text NOT NULL,
+    dim integer DEFAULT 2560 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    embedding public.vector(2560) NOT NULL,
+    CONSTRAINT atlas_embedding_dim_check CHECK ((dim = 2560))
+);
+
+
+--
+-- Name: atlas_epoch; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_epoch (
+    epoch_id bigint NOT NULL,
+    epoch_name text NOT NULL,
+    kind text DEFAULT 'drive_set'::text NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    started_at timestamp with time zone,
+    finished_at timestamp with time zone,
+    backend_jsonb jsonb DEFAULT '{}'::jsonb NOT NULL,
+    notes text,
+    payload_jsonb jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT atlas_epoch_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'running'::text, 'complete'::text, 'failed'::text, 'completed_with_failures'::text])))
+);
+
+
+--
+-- Name: atlas_epoch_document_snapshot; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_epoch_document_snapshot (
+    epoch_id bigint NOT NULL,
+    document_id bigint NOT NULL,
+    root_id bigint NOT NULL,
+    rel_path text NOT NULL,
+    sha256 text,
+    size_bytes bigint,
+    mtime timestamp with time zone,
+    indexed_at timestamp with time zone,
+    status text NOT NULL,
+    snapshotted_at timestamp with time zone DEFAULT now() NOT NULL,
+    path_depth integer,
+    parent_rel_path text,
+    ancestor_rel_paths text[]
+);
+
+
+--
+-- Name: atlas_epoch_epoch_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_epoch_epoch_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_epoch_epoch_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_epoch_epoch_id_seq OWNED BY atlas.atlas_epoch.epoch_id;
+
+
+--
+-- Name: atlas_epoch_root; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_epoch_root (
+    epoch_id bigint NOT NULL,
+    root_id bigint NOT NULL,
+    root_path text NOT NULL,
+    root_role text DEFAULT 'source'::text NOT NULL,
+    enabled_at_start boolean NOT NULL,
+    added_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: atlas_f; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_f (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    slot_key text NOT NULL,
+    label text NOT NULL,
+    src_domain text,
+    dst_domain text,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_f_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_f_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_f_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_f_id_seq OWNED BY atlas.atlas_f.id;
+
+
+--
+-- Name: atlas_fingerprint; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_fingerprint (
+    id bigint NOT NULL,
+    target_kind text NOT NULL,
+    target_id bigint NOT NULL,
+    algo text DEFAULT 'sha256'::text NOT NULL,
+    sha256 text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: atlas_fingerprint_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_fingerprint_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_fingerprint_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_fingerprint_id_seq OWNED BY atlas.atlas_fingerprint.id;
+
+
+--
+-- Name: atlas_g; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_g (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    slot_key text NOT NULL,
+    label text NOT NULL,
+    sub_kind text,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_g_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_g_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_g_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_g_id_seq OWNED BY atlas.atlas_g.id;
+
+
+--
+-- Name: atlas_m; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_m (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    slot_key text NOT NULL,
+    label text NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_m_edges; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_m_edges (
+    id bigint NOT NULL,
+    src_kind text NOT NULL,
+    src_id bigint NOT NULL,
+    dst_kind text NOT NULL,
+    dst_id bigint NOT NULL,
+    kind atlas.coupling_kind NOT NULL,
+    affixion text NOT NULL,
+    irreversible boolean DEFAULT false NOT NULL,
+    evidence jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT atlas_m_edges_check CHECK ((((kind = ANY (ARRAY['contradicts'::atlas.coupling_kind, 'decouples'::atlas.coupling_kind])) AND (irreversible = true)) OR (kind <> ALL (ARRAY['contradicts'::atlas.coupling_kind, 'decouples'::atlas.coupling_kind]))))
+);
+
+
+--
+-- Name: atlas_m_edges_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_m_edges_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_m_edges_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_m_edges_id_seq OWNED BY atlas.atlas_m_edges.id;
+
+
+--
+-- Name: atlas_m_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_m_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_m_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_m_id_seq OWNED BY atlas.atlas_m.id;
+
+
+--
+-- Name: atlas_o; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_o (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    slot_key text NOT NULL,
+    label text NOT NULL,
+    cls atlas.observer_class NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_o_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_o_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_o_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_o_id_seq OWNED BY atlas.atlas_o.id;
+
+
+--
+-- Name: atlas_p; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_p (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    slot_key text NOT NULL,
+    label text NOT NULL,
+    expr text NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_p_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_p_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_p_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_p_id_seq OWNED BY atlas.atlas_p.id;
+
+
+--
+-- Name: atlas_pi; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_pi (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    slot_key text NOT NULL,
+    label text NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_pi_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_pi_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_pi_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_pi_id_seq OWNED BY atlas.atlas_pi.id;
+
+
+--
+-- Name: atlas_provenance; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_provenance (
+    event_id uuid NOT NULL,
+    actor text NOT NULL,
+    action text NOT NULL,
+    target_table text NOT NULL,
+    target_id text,
+    parent_event_id uuid,
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL,
+    payload_jsonb jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_r; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_r (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    slot_key text NOT NULL,
+    label text NOT NULL,
+    rule_class text,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_r_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_r_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_r_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_r_id_seq OWNED BY atlas.atlas_r.id;
+
+
+--
+-- Name: atlas_root; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_root (
+    root_id bigint NOT NULL,
+    root_path text NOT NULL,
+    excludes jsonb DEFAULT '[]'::jsonb NOT NULL,
+    enabled boolean DEFAULT true NOT NULL,
+    last_full_scan_at timestamp with time zone
+);
+
+
+--
+-- Name: atlas_root_root_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_root_root_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_root_root_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_root_root_id_seq OWNED BY atlas.atlas_root.root_id;
+
+
+--
+-- Name: atlas_similarity_edge; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_similarity_edge (
+    edge_id bigint NOT NULL,
+    edge_scope text DEFAULT 'chunk_knn'::text NOT NULL,
+    root_id bigint,
+    doc_id_a bigint NOT NULL,
+    doc_id_b bigint NOT NULL,
+    chunk_id_a bigint NOT NULL,
+    chunk_id_b bigint NOT NULL,
+    model text NOT NULL,
+    cosine double precision NOT NULL,
+    edge_rank integer NOT NULL,
+    shard_index integer,
+    shard_count integer,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    angular_distance double precision,
+    ollivier_ricci_curvature double precision,
+    CONSTRAINT atlas_similarity_edge_cosine_range CHECK (((cosine >= ('-1.0'::numeric)::double precision) AND (cosine <= (1.0)::double precision))),
+    CONSTRAINT atlas_similarity_edge_distinct_docs CHECK ((doc_id_a <> doc_id_b)),
+    CONSTRAINT atlas_similarity_edge_rank_positive CHECK ((edge_rank > 0))
+);
+
+
+--
+-- Name: atlas_similarity_edge_canonical; Type: VIEW; Schema: atlas; Owner: -
+--
+
+CREATE VIEW atlas.atlas_similarity_edge_canonical AS
+ SELECT e.edge_id,
+    e.edge_scope,
+    e.root_id,
+    e.doc_id_a,
+    e.doc_id_b,
+    e.chunk_id_a,
+    e.chunk_id_b,
+    e.model,
+    e.cosine,
+    e.edge_rank,
+    e.shard_index,
+    e.shard_count,
+    e.metadata,
+    e.created_at,
+    e.updated_at,
+    e.angular_distance,
+    e.ollivier_ricci_curvature
+   FROM ((atlas.atlas_similarity_edge e
+     JOIN atlas.atlas_document da ON ((da.document_id = e.doc_id_a)))
+     JOIN atlas.atlas_document db ON ((db.document_id = e.doc_id_b)))
+  WHERE (((da.version_status IS NULL) OR (da.version_status = 'canonical'::text)) AND ((db.version_status IS NULL) OR (db.version_status = 'canonical'::text)));
+
+
+--
+-- Name: VIEW atlas_similarity_edge_canonical; Type: COMMENT; Schema: atlas; Owner: -
+--
+
+COMMENT ON VIEW atlas.atlas_similarity_edge_canonical IS 'Gate 3 (signed 2026-07-13): canonical-only curvature scope. Pass 2 communities inherit this scope explicitly; non-canonical edges are geometrically degenerate under the version-status collapse and carry curvature_out_of_scope in metadata if a legacy run ever computed them.';
+
+
+--
+-- Name: atlas_similarity_edge_edge_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_similarity_edge_edge_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_similarity_edge_edge_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_similarity_edge_edge_id_seq OWNED BY atlas.atlas_similarity_edge.edge_id;
+
+
+--
+-- Name: atlas_t; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_t (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    slot_key text NOT NULL,
+    label text NOT NULL,
+    parent_id bigint,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: atlas_t_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_t_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_t_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_t_id_seq OWNED BY atlas.atlas_t.id;
+
+
+--
+-- Name: atlas_u_x; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_u_x (
+    id bigint NOT NULL,
+    implied_iri text NOT NULL,
+    implied_by_kind text NOT NULL,
+    implied_by_id bigint NOT NULL,
+    reason text NOT NULL,
+    surfaced_at timestamp with time zone DEFAULT now() NOT NULL,
+    resolved_at timestamp with time zone,
+    resolved_to_iri text,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_u_x_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_u_x_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_u_x_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_u_x_id_seq OWNED BY atlas.atlas_u_x.id;
+
+
+--
+-- Name: atlas_version_chain; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_version_chain (
+    chain_id bigint NOT NULL,
+    document_id bigint NOT NULL,
+    "position" integer NOT NULL,
+    delta_vector public.vector(2560),
+    delta_norm double precision,
+    chain_kind text DEFAULT 'version_chain'::text NOT NULL,
+    ordering_method text NOT NULL,
+    schema_version integer DEFAULT 1 NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT atlas_version_chain_kind CHECK ((chain_kind = ANY (ARRAY['version_chain'::text, 'sibling_set'::text]))),
+    CONSTRAINT atlas_version_chain_position CHECK (("position" >= 0)),
+    CONSTRAINT atlas_version_chain_status CHECK ((status = ANY (ARRAY['active'::text, 'superseded'::text])))
+);
+
+
+--
+-- Name: atlas_x_m; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_x_m (
+    id bigint NOT NULL,
+    src_m_edge_id bigint NOT NULL,
+    dst_m_edge_id bigint NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_x_m_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_x_m_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_x_m_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_x_m_id_seq OWNED BY atlas.atlas_x_m.id;
+
+
+--
+-- Name: atlas_x_p; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_x_p (
+    id bigint NOT NULL,
+    src_p_id bigint NOT NULL,
+    dst_p_id bigint NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_x_p_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_x_p_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_x_p_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_x_p_id_seq OWNED BY atlas.atlas_x_p.id;
+
+
+--
+-- Name: atlas_x_r; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_x_r (
+    id bigint NOT NULL,
+    src_r_id bigint NOT NULL,
+    dst_r_id bigint NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_x_r_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_x_r_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_x_r_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_x_r_id_seq OWNED BY atlas.atlas_x_r.id;
+
+
+--
+-- Name: atlas_x_t; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.atlas_x_t (
+    id bigint NOT NULL,
+    src_t_id bigint NOT NULL,
+    dst_t_id bigint NOT NULL,
+    overlap_score double precision,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: atlas_x_t_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.atlas_x_t_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: atlas_x_t_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.atlas_x_t_id_seq OWNED BY atlas.atlas_x_t.id;
+
+
+--
+-- Name: audit_metrics; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.audit_metrics (
+    id bigint NOT NULL,
+    domain_id bigint,
+    snapshot_at timestamp with time zone DEFAULT now() NOT NULL,
+    registry_coverage double precision,
+    provenance_completeness double precision,
+    unsupported_critical_claims integer,
+    critical_pending_count integer,
+    observer_sensitivity double precision,
+    rewrite_precision double precision,
+    referential_integrity double precision,
+    security_blocked_count integer DEFAULT 0 NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: audit_metrics_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.audit_metrics_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: audit_metrics_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.audit_metrics_id_seq OWNED BY atlas.audit_metrics.id;
+
+
+--
+-- Name: domain; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.domain (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    iri text NOT NULL,
+    spec_version text DEFAULT 'v0.3.5-rc1'::text NOT NULL,
+    fingerprint_sha text,
+    embedding_model text DEFAULT 'stub-bge-m3-compatible'::text NOT NULL,
+    embedding_dim integer DEFAULT 1024 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    notes text,
+    CONSTRAINT domain_embedding_dim_check CHECK ((embedding_dim = 1024))
+);
+
+
+--
+-- Name: domain_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.domain_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: domain_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.domain_id_seq OWNED BY atlas.domain.id;
+
+
+--
+-- Name: fp_outcome_log; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.fp_outcome_log (
+    id bigint NOT NULL,
+    domain_id bigint,
+    outcome atlas.fp_outcome NOT NULL,
+    stability_floor_insufficient boolean DEFAULT false NOT NULL,
+    n_observations integer,
+    epsilon double precision DEFAULT 0.05 NOT NULL,
+    tau double precision DEFAULT 0.95 NOT NULL,
+    m integer DEFAULT 2 NOT NULL,
+    n_max integer DEFAULT 5 NOT NULL,
+    detail jsonb DEFAULT '{}'::jsonb NOT NULL,
+    computed_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT fp_outcome_log_check CHECK (((n_observations IS NULL) OR ((n_observations >= 50) AND (stability_floor_insufficient = false)) OR ((n_observations < 50) AND (stability_floor_insufficient = true))))
+);
+
+
+--
+-- Name: fp_outcome_log_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.fp_outcome_log_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: fp_outcome_log_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.fp_outcome_log_id_seq OWNED BY atlas.fp_outcome_log.id;
+
+
+--
+-- Name: glyph_values_ptr; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.glyph_values_ptr (
+    id bigint NOT NULL,
+    domain_id bigint NOT NULL,
+    node_hostname text NOT NULL,
+    local_path text NOT NULL,
+    aggregate_promoted_to text,
+    stable boolean DEFAULT false NOT NULL,
+    last_observed timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: glyph_values_ptr_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.glyph_values_ptr_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: glyph_values_ptr_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.glyph_values_ptr_id_seq OWNED BY atlas.glyph_values_ptr.id;
+
+
+--
+-- Name: object_envelope; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.object_envelope (
+    id bigint NOT NULL,
+    envelope_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    parent_envelope_id uuid,
+    source_snapshot_id uuid NOT NULL,
+    target_kind text NOT NULL,
+    target_id bigint NOT NULL,
+    op text NOT NULL,
+    json_patch jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: object_envelope_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.object_envelope_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: object_envelope_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.object_envelope_id_seq OWNED BY atlas.object_envelope.id;
+
+
+--
+-- Name: rewrite_log; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.rewrite_log (
+    id bigint NOT NULL,
+    target_kind text NOT NULL,
+    target_id bigint NOT NULL,
+    field text NOT NULL,
+    before_value jsonb,
+    after_value jsonb,
+    json_patch jsonb NOT NULL,
+    operator_approved boolean DEFAULT false NOT NULL,
+    approver text,
+    approved_at timestamp with time zone,
+    requested_by text,
+    requested_at timestamp with time zone DEFAULT now() NOT NULL,
+    rewrite_precision_delta double precision,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: rewrite_log_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.rewrite_log_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: rewrite_log_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.rewrite_log_id_seq OWNED BY atlas.rewrite_log.id;
+
+
+--
+-- Name: source_snapshot; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.source_snapshot (
+    id bigint NOT NULL,
+    snapshot_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    uri text NOT NULL,
+    sha256 text NOT NULL,
+    observed_at timestamp with time zone DEFAULT now() NOT NULL,
+    observer_host text,
+    observer_os text,
+    observer_ip inet,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: source_snapshot_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.source_snapshot_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: source_snapshot_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.source_snapshot_id_seq OWNED BY atlas.source_snapshot.id;
+
+
+--
+-- Name: spec_predicate_log; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.spec_predicate_log (
+    id bigint NOT NULL,
+    run_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    domain_id bigint NOT NULL,
+    test_key text NOT NULL,
+    passed boolean NOT NULL,
+    detail jsonb DEFAULT '{}'::jsonb NOT NULL,
+    ran_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: spec_predicate_log_id_seq; Type: SEQUENCE; Schema: atlas; Owner: -
+--
+
+CREATE SEQUENCE atlas.spec_predicate_log_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: spec_predicate_log_id_seq; Type: SEQUENCE OWNED BY; Schema: atlas; Owner: -
+--
+
+ALTER SEQUENCE atlas.spec_predicate_log_id_seq OWNED BY atlas.spec_predicate_log.id;
+
+
+--
+-- Name: v_domain_summary; Type: VIEW; Schema: atlas; Owner: -
+--
+
+CREATE VIEW atlas.v_domain_summary AS
+ SELECT id,
+    name,
+    iri,
+    spec_version,
+    fingerprint_sha,
+    ( SELECT count(*) AS count
+           FROM atlas.atlas_t t
+          WHERE (t.domain_id = d.id)) AS n_t,
+    ( SELECT count(*) AS count
+           FROM atlas.atlas_g g
+          WHERE (g.domain_id = d.id)) AS n_g,
+    ( SELECT count(*) AS count
+           FROM atlas.atlas_pi pi
+          WHERE (pi.domain_id = d.id)) AS n_pi,
+    ( SELECT count(*) AS count
+           FROM atlas.atlas_r r
+          WHERE (r.domain_id = d.id)) AS n_r,
+    ( SELECT count(*) AS count
+           FROM atlas.atlas_m m
+          WHERE (m.domain_id = d.id)) AS n_m,
+    ( SELECT count(*) AS count
+           FROM atlas.atlas_o o
+          WHERE (o.domain_id = d.id)) AS n_o,
+    ( SELECT count(*) AS count
+           FROM atlas.atlas_e e
+          WHERE (e.domain_id = d.id)) AS n_e,
+    ( SELECT count(*) AS count
+           FROM atlas.atlas_c c
+          WHERE (c.domain_id = d.id)) AS n_c,
+    ( SELECT count(*) AS count
+           FROM atlas.atlas_f f
+          WHERE (f.domain_id = d.id)) AS n_f,
+    ( SELECT count(*) AS count
+           FROM atlas.atlas_p p
+          WHERE (p.domain_id = d.id)) AS n_p,
+    ( SELECT count(*) AS count
+           FROM atlas.atlas_a a
+          WHERE (a.domain_id = d.id)) AS n_a
+   FROM atlas.domain d;
+
+
+--
+-- Name: view_profile; Type: TABLE; Schema: atlas; Owner: -
+--
+
+CREATE TABLE atlas.view_profile (
+    name atlas.view_profile_t NOT NULL,
+    redaction_active boolean NOT NULL,
+    nim_cap integer,
+    hanoi_cap integer,
+    tic_tac_toe_cap integer,
+    sliding_block_seed text,
+    notes text
+);
+
+
+--
+-- Name: asana_project id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.asana_project ALTER COLUMN id SET DEFAULT nextval('atlas.asana_project_id_seq'::regclass);
+
+
+--
+-- Name: asana_task id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.asana_task ALTER COLUMN id SET DEFAULT nextval('atlas.asana_task_id_seq'::regclass);
+
+
+--
+-- Name: atlas_a id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_a ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_a_id_seq'::regclass);
+
+
+--
+-- Name: atlas_a_edges id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_a_edges ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_a_edges_id_seq'::regclass);
+
+
+--
+-- Name: atlas_c id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_c ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_c_id_seq'::regclass);
+
+
+--
+-- Name: atlas_chunk chunk_id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_chunk ALTER COLUMN chunk_id SET DEFAULT nextval('atlas.atlas_chunk_chunk_id_seq'::regclass);
+
+
+--
+-- Name: atlas_doc_code_link link_id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_doc_code_link ALTER COLUMN link_id SET DEFAULT nextval('atlas.atlas_doc_code_link_link_id_seq'::regclass);
+
+
+--
+-- Name: atlas_doc_code_queue queue_id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_doc_code_queue ALTER COLUMN queue_id SET DEFAULT nextval('atlas.atlas_doc_code_queue_queue_id_seq'::regclass);
+
+
+--
+-- Name: atlas_document document_id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_document ALTER COLUMN document_id SET DEFAULT nextval('atlas.atlas_document_document_id_seq'::regclass);
+
+
+--
+-- Name: atlas_e id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_e ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_e_id_seq'::regclass);
+
+
+--
+-- Name: atlas_embed_queue queue_id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_embed_queue ALTER COLUMN queue_id SET DEFAULT nextval('atlas.atlas_embed_queue_queue_id_seq'::regclass);
+
+
+--
+-- Name: atlas_embedding id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_embedding ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_embedding_id_seq'::regclass);
+
+
+--
+-- Name: atlas_epoch epoch_id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_epoch ALTER COLUMN epoch_id SET DEFAULT nextval('atlas.atlas_epoch_epoch_id_seq'::regclass);
+
+
+--
+-- Name: atlas_f id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_f ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_f_id_seq'::regclass);
+
+
+--
+-- Name: atlas_fingerprint id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_fingerprint ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_fingerprint_id_seq'::regclass);
+
+
+--
+-- Name: atlas_g id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_g ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_g_id_seq'::regclass);
+
+
+--
+-- Name: atlas_m id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_m ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_m_id_seq'::regclass);
+
+
+--
+-- Name: atlas_m_edges id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_m_edges ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_m_edges_id_seq'::regclass);
+
+
+--
+-- Name: atlas_o id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_o ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_o_id_seq'::regclass);
+
+
+--
+-- Name: atlas_p id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_p ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_p_id_seq'::regclass);
+
+
+--
+-- Name: atlas_pi id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_pi ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_pi_id_seq'::regclass);
+
+
+--
+-- Name: atlas_r id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_r ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_r_id_seq'::regclass);
+
+
+--
+-- Name: atlas_root root_id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_root ALTER COLUMN root_id SET DEFAULT nextval('atlas.atlas_root_root_id_seq'::regclass);
+
+
+--
+-- Name: atlas_similarity_edge edge_id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_similarity_edge ALTER COLUMN edge_id SET DEFAULT nextval('atlas.atlas_similarity_edge_edge_id_seq'::regclass);
+
+
+--
+-- Name: atlas_t id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_t ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_t_id_seq'::regclass);
+
+
+--
+-- Name: atlas_u_x id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_u_x ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_u_x_id_seq'::regclass);
+
+
+--
+-- Name: atlas_x_m id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_m ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_x_m_id_seq'::regclass);
+
+
+--
+-- Name: atlas_x_p id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_p ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_x_p_id_seq'::regclass);
+
+
+--
+-- Name: atlas_x_r id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_r ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_x_r_id_seq'::regclass);
+
+
+--
+-- Name: atlas_x_t id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_t ALTER COLUMN id SET DEFAULT nextval('atlas.atlas_x_t_id_seq'::regclass);
+
+
+--
+-- Name: audit_metrics id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.audit_metrics ALTER COLUMN id SET DEFAULT nextval('atlas.audit_metrics_id_seq'::regclass);
+
+
+--
+-- Name: domain id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.domain ALTER COLUMN id SET DEFAULT nextval('atlas.domain_id_seq'::regclass);
+
+
+--
+-- Name: fp_outcome_log id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.fp_outcome_log ALTER COLUMN id SET DEFAULT nextval('atlas.fp_outcome_log_id_seq'::regclass);
+
+
+--
+-- Name: glyph_values_ptr id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.glyph_values_ptr ALTER COLUMN id SET DEFAULT nextval('atlas.glyph_values_ptr_id_seq'::regclass);
+
+
+--
+-- Name: object_envelope id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.object_envelope ALTER COLUMN id SET DEFAULT nextval('atlas.object_envelope_id_seq'::regclass);
+
+
+--
+-- Name: rewrite_log id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.rewrite_log ALTER COLUMN id SET DEFAULT nextval('atlas.rewrite_log_id_seq'::regclass);
+
+
+--
+-- Name: source_snapshot id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.source_snapshot ALTER COLUMN id SET DEFAULT nextval('atlas.source_snapshot_id_seq'::regclass);
+
+
+--
+-- Name: spec_predicate_log id; Type: DEFAULT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.spec_predicate_log ALTER COLUMN id SET DEFAULT nextval('atlas.spec_predicate_log_id_seq'::regclass);
+
+
+--
+-- Name: affixion_strength affixion_strength_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.affixion_strength
+    ADD CONSTRAINT affixion_strength_pkey PRIMARY KEY (glyph);
+
+
+--
+-- Name: affixion_strength affixion_strength_value_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.affixion_strength
+    ADD CONSTRAINT affixion_strength_value_key UNIQUE (value);
+
+
+--
+-- Name: asana_project asana_project_asana_gid_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.asana_project
+    ADD CONSTRAINT asana_project_asana_gid_key UNIQUE (asana_gid);
+
+
+--
+-- Name: asana_project asana_project_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.asana_project
+    ADD CONSTRAINT asana_project_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: asana_task asana_task_asana_gid_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.asana_task
+    ADD CONSTRAINT asana_task_asana_gid_key UNIQUE (asana_gid);
+
+
+--
+-- Name: asana_task asana_task_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.asana_task
+    ADD CONSTRAINT asana_task_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_a atlas_a_domain_id_slot_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_a
+    ADD CONSTRAINT atlas_a_domain_id_slot_key_key UNIQUE (domain_id, slot_key);
+
+
+--
+-- Name: atlas_a_edges atlas_a_edges_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_a_edges
+    ADD CONSTRAINT atlas_a_edges_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_a_edges atlas_a_edges_src_a_id_dst_a_id_morphism_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_a_edges
+    ADD CONSTRAINT atlas_a_edges_src_a_id_dst_a_id_morphism_key UNIQUE (src_a_id, dst_a_id, morphism);
+
+
+--
+-- Name: atlas_a atlas_a_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_a
+    ADD CONSTRAINT atlas_a_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_c atlas_c_domain_id_slot_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_c
+    ADD CONSTRAINT atlas_c_domain_id_slot_key_key UNIQUE (domain_id, slot_key);
+
+
+--
+-- Name: atlas_c atlas_c_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_c
+    ADD CONSTRAINT atlas_c_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_chunk atlas_chunk_document_id_chunk_index_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_chunk
+    ADD CONSTRAINT atlas_chunk_document_id_chunk_index_key UNIQUE (document_id, chunk_index);
+
+
+--
+-- Name: atlas_chunk atlas_chunk_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_chunk
+    ADD CONSTRAINT atlas_chunk_pkey PRIMARY KEY (chunk_id);
+
+
+--
+-- Name: atlas_doc_code_link atlas_doc_code_link_doc_document_id_code_document_id_method_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_doc_code_link
+    ADD CONSTRAINT atlas_doc_code_link_doc_document_id_code_document_id_method_key UNIQUE (doc_document_id, code_document_id, method);
+
+
+--
+-- Name: atlas_doc_code_link atlas_doc_code_link_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_doc_code_link
+    ADD CONSTRAINT atlas_doc_code_link_pkey PRIMARY KEY (link_id);
+
+
+--
+-- Name: atlas_doc_code_queue atlas_doc_code_queue_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_doc_code_queue
+    ADD CONSTRAINT atlas_doc_code_queue_pkey PRIMARY KEY (queue_id);
+
+
+--
+-- Name: atlas_doc_relevance atlas_doc_relevance_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_doc_relevance
+    ADD CONSTRAINT atlas_doc_relevance_pkey PRIMARY KEY (document_id, project, method);
+
+
+--
+-- Name: atlas_document atlas_document_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_document
+    ADD CONSTRAINT atlas_document_pkey PRIMARY KEY (document_id);
+
+
+--
+-- Name: atlas_document atlas_document_root_id_rel_path_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_document
+    ADD CONSTRAINT atlas_document_root_id_rel_path_key UNIQUE (root_id, rel_path);
+
+
+--
+-- Name: atlas_dup_cluster atlas_dup_cluster_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_dup_cluster
+    ADD CONSTRAINT atlas_dup_cluster_pkey PRIMARY KEY (cluster_id, document_id);
+
+
+--
+-- Name: atlas_e atlas_e_domain_id_slot_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_e
+    ADD CONSTRAINT atlas_e_domain_id_slot_key_key UNIQUE (domain_id, slot_key);
+
+
+--
+-- Name: atlas_e atlas_e_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_e
+    ADD CONSTRAINT atlas_e_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_embed_queue atlas_embed_queue_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_embed_queue
+    ADD CONSTRAINT atlas_embed_queue_pkey PRIMARY KEY (queue_id);
+
+
+--
+-- Name: atlas_embedding_orphan_archive_dfsa_full_sweep_20260730_rev3 atlas_embedding_orphan_archive__target_kind_target_id_model_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_embedding_orphan_archive_dfsa_full_sweep_20260730_rev3
+    ADD CONSTRAINT atlas_embedding_orphan_archive__target_kind_target_id_model_key UNIQUE (target_kind, target_id, model);
+
+
+--
+-- Name: atlas_embedding_orphan_archive_dfsa_full_sweep_20260730_rev3 atlas_embedding_orphan_archive_dfsa_full_sweep_20260730_re_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_embedding_orphan_archive_dfsa_full_sweep_20260730_rev3
+    ADD CONSTRAINT atlas_embedding_orphan_archive_dfsa_full_sweep_20260730_re_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_embedding atlas_embedding_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_embedding
+    ADD CONSTRAINT atlas_embedding_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_embedding atlas_embedding_target_kind_target_id_model_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_embedding
+    ADD CONSTRAINT atlas_embedding_target_kind_target_id_model_key UNIQUE (target_kind, target_id, model);
+
+
+--
+-- Name: atlas_epoch_document_snapshot atlas_epoch_document_snapshot_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_epoch_document_snapshot
+    ADD CONSTRAINT atlas_epoch_document_snapshot_pkey PRIMARY KEY (epoch_id, document_id);
+
+
+--
+-- Name: atlas_epoch atlas_epoch_epoch_name_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_epoch
+    ADD CONSTRAINT atlas_epoch_epoch_name_key UNIQUE (epoch_name);
+
+
+--
+-- Name: atlas_epoch atlas_epoch_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_epoch
+    ADD CONSTRAINT atlas_epoch_pkey PRIMARY KEY (epoch_id);
+
+
+--
+-- Name: atlas_epoch_root atlas_epoch_root_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_epoch_root
+    ADD CONSTRAINT atlas_epoch_root_pkey PRIMARY KEY (epoch_id, root_id);
+
+
+--
+-- Name: atlas_f atlas_f_domain_id_slot_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_f
+    ADD CONSTRAINT atlas_f_domain_id_slot_key_key UNIQUE (domain_id, slot_key);
+
+
+--
+-- Name: atlas_f atlas_f_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_f
+    ADD CONSTRAINT atlas_f_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_fingerprint atlas_fingerprint_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_fingerprint
+    ADD CONSTRAINT atlas_fingerprint_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_fingerprint atlas_fingerprint_target_kind_target_id_algo_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_fingerprint
+    ADD CONSTRAINT atlas_fingerprint_target_kind_target_id_algo_key UNIQUE (target_kind, target_id, algo);
+
+
+--
+-- Name: atlas_g atlas_g_domain_id_slot_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_g
+    ADD CONSTRAINT atlas_g_domain_id_slot_key_key UNIQUE (domain_id, slot_key);
+
+
+--
+-- Name: atlas_g atlas_g_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_g
+    ADD CONSTRAINT atlas_g_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_m atlas_m_domain_id_slot_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_m
+    ADD CONSTRAINT atlas_m_domain_id_slot_key_key UNIQUE (domain_id, slot_key);
+
+
+--
+-- Name: atlas_m_edges atlas_m_edges_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_m_edges
+    ADD CONSTRAINT atlas_m_edges_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_m atlas_m_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_m
+    ADD CONSTRAINT atlas_m_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_o atlas_o_domain_id_slot_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_o
+    ADD CONSTRAINT atlas_o_domain_id_slot_key_key UNIQUE (domain_id, slot_key);
+
+
+--
+-- Name: atlas_o atlas_o_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_o
+    ADD CONSTRAINT atlas_o_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_p atlas_p_domain_id_slot_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_p
+    ADD CONSTRAINT atlas_p_domain_id_slot_key_key UNIQUE (domain_id, slot_key);
+
+
+--
+-- Name: atlas_p atlas_p_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_p
+    ADD CONSTRAINT atlas_p_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_pi atlas_pi_domain_id_slot_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_pi
+    ADD CONSTRAINT atlas_pi_domain_id_slot_key_key UNIQUE (domain_id, slot_key);
+
+
+--
+-- Name: atlas_pi atlas_pi_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_pi
+    ADD CONSTRAINT atlas_pi_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_provenance atlas_provenance_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_provenance
+    ADD CONSTRAINT atlas_provenance_pkey PRIMARY KEY (event_id);
+
+
+--
+-- Name: atlas_r atlas_r_domain_id_slot_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_r
+    ADD CONSTRAINT atlas_r_domain_id_slot_key_key UNIQUE (domain_id, slot_key);
+
+
+--
+-- Name: atlas_r atlas_r_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_r
+    ADD CONSTRAINT atlas_r_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_root atlas_root_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_root
+    ADD CONSTRAINT atlas_root_pkey PRIMARY KEY (root_id);
+
+
+--
+-- Name: atlas_root atlas_root_root_path_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_root
+    ADD CONSTRAINT atlas_root_root_path_key UNIQUE (root_path);
+
+
+--
+-- Name: atlas_similarity_edge atlas_similarity_edge_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_similarity_edge
+    ADD CONSTRAINT atlas_similarity_edge_pkey PRIMARY KEY (edge_id);
+
+
+--
+-- Name: atlas_similarity_edge atlas_similarity_edge_unique; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_similarity_edge
+    ADD CONSTRAINT atlas_similarity_edge_unique UNIQUE (edge_scope, model, chunk_id_a, chunk_id_b);
+
+
+--
+-- Name: atlas_t atlas_t_domain_id_slot_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_t
+    ADD CONSTRAINT atlas_t_domain_id_slot_key_key UNIQUE (domain_id, slot_key);
+
+
+--
+-- Name: atlas_t atlas_t_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_t
+    ADD CONSTRAINT atlas_t_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_u_x atlas_u_x_implied_iri_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_u_x
+    ADD CONSTRAINT atlas_u_x_implied_iri_key UNIQUE (implied_iri);
+
+
+--
+-- Name: atlas_u_x atlas_u_x_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_u_x
+    ADD CONSTRAINT atlas_u_x_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_version_chain atlas_version_chain_chain_id_position_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_version_chain
+    ADD CONSTRAINT atlas_version_chain_chain_id_position_key UNIQUE (chain_id, "position");
+
+
+--
+-- Name: atlas_version_chain atlas_version_chain_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_version_chain
+    ADD CONSTRAINT atlas_version_chain_pkey PRIMARY KEY (chain_id, document_id);
+
+
+--
+-- Name: atlas_x_m atlas_x_m_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_m
+    ADD CONSTRAINT atlas_x_m_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_x_m atlas_x_m_src_m_edge_id_dst_m_edge_id_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_m
+    ADD CONSTRAINT atlas_x_m_src_m_edge_id_dst_m_edge_id_key UNIQUE (src_m_edge_id, dst_m_edge_id);
+
+
+--
+-- Name: atlas_x_p atlas_x_p_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_p
+    ADD CONSTRAINT atlas_x_p_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_x_p atlas_x_p_src_p_id_dst_p_id_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_p
+    ADD CONSTRAINT atlas_x_p_src_p_id_dst_p_id_key UNIQUE (src_p_id, dst_p_id);
+
+
+--
+-- Name: atlas_x_r atlas_x_r_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_r
+    ADD CONSTRAINT atlas_x_r_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_x_r atlas_x_r_src_r_id_dst_r_id_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_r
+    ADD CONSTRAINT atlas_x_r_src_r_id_dst_r_id_key UNIQUE (src_r_id, dst_r_id);
+
+
+--
+-- Name: atlas_x_t atlas_x_t_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_t
+    ADD CONSTRAINT atlas_x_t_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: atlas_x_t atlas_x_t_src_t_id_dst_t_id_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_t
+    ADD CONSTRAINT atlas_x_t_src_t_id_dst_t_id_key UNIQUE (src_t_id, dst_t_id);
+
+
+--
+-- Name: audit_metrics audit_metrics_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.audit_metrics
+    ADD CONSTRAINT audit_metrics_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: domain domain_iri_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.domain
+    ADD CONSTRAINT domain_iri_key UNIQUE (iri);
+
+
+--
+-- Name: domain domain_name_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.domain
+    ADD CONSTRAINT domain_name_key UNIQUE (name);
+
+
+--
+-- Name: domain domain_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.domain
+    ADD CONSTRAINT domain_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: fp_outcome_log fp_outcome_log_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.fp_outcome_log
+    ADD CONSTRAINT fp_outcome_log_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: glyph_values_ptr glyph_values_ptr_domain_id_node_hostname_local_path_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.glyph_values_ptr
+    ADD CONSTRAINT glyph_values_ptr_domain_id_node_hostname_local_path_key UNIQUE (domain_id, node_hostname, local_path);
+
+
+--
+-- Name: glyph_values_ptr glyph_values_ptr_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.glyph_values_ptr
+    ADD CONSTRAINT glyph_values_ptr_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: object_envelope object_envelope_envelope_id_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.object_envelope
+    ADD CONSTRAINT object_envelope_envelope_id_key UNIQUE (envelope_id);
+
+
+--
+-- Name: object_envelope object_envelope_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.object_envelope
+    ADD CONSTRAINT object_envelope_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: rewrite_log rewrite_log_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.rewrite_log
+    ADD CONSTRAINT rewrite_log_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: source_snapshot source_snapshot_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.source_snapshot
+    ADD CONSTRAINT source_snapshot_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: source_snapshot source_snapshot_snapshot_id_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.source_snapshot
+    ADD CONSTRAINT source_snapshot_snapshot_id_key UNIQUE (snapshot_id);
+
+
+--
+-- Name: spec_predicate_log spec_predicate_log_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.spec_predicate_log
+    ADD CONSTRAINT spec_predicate_log_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: spec_predicate_log spec_predicate_log_run_id_test_key_key; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.spec_predicate_log
+    ADD CONSTRAINT spec_predicate_log_run_id_test_key_key UNIQUE (run_id, test_key);
+
+
+--
+-- Name: view_profile view_profile_pkey; Type: CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.view_profile
+    ADD CONSTRAINT view_profile_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: asana_task_section_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX asana_task_section_idx ON atlas.asana_task USING btree (section);
+
+
+--
+-- Name: asana_task_status_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX asana_task_status_idx ON atlas.asana_task USING btree (status_label);
+
+
+--
+-- Name: atlas_chunk_document_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_chunk_document_idx ON atlas.atlas_chunk USING btree (document_id, chunk_index);
+
+
+--
+-- Name: atlas_chunk_metadata_gin_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_chunk_metadata_gin_idx ON atlas.atlas_chunk USING gin (chunk_metadata);
+
+
+--
+-- Name: atlas_doc_code_link_code_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_doc_code_link_code_idx ON atlas.atlas_doc_code_link USING btree (code_document_id, confidence DESC);
+
+
+--
+-- Name: atlas_doc_code_link_doc_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_doc_code_link_doc_idx ON atlas.atlas_doc_code_link USING btree (doc_document_id, confidence DESC);
+
+
+--
+-- Name: atlas_doc_code_queue_status_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_doc_code_queue_status_idx ON atlas.atlas_doc_code_queue USING btree (status, queue_id);
+
+
+--
+-- Name: atlas_doc_relevance_project_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_doc_relevance_project_idx ON atlas.atlas_doc_relevance USING btree (project, score DESC);
+
+
+--
+-- Name: atlas_document_root_depth_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_document_root_depth_idx ON atlas.atlas_document USING btree (root_id, path_depth);
+
+
+--
+-- Name: atlas_document_root_parent_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_document_root_parent_idx ON atlas.atlas_document USING btree (root_id, parent_rel_path);
+
+
+--
+-- Name: atlas_document_root_status_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_document_root_status_idx ON atlas.atlas_document USING btree (root_id, status);
+
+
+--
+-- Name: atlas_document_version_status_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_document_version_status_idx ON atlas.atlas_document USING btree (version_status) WHERE (version_status IS NOT NULL);
+
+
+--
+-- Name: atlas_dup_cluster_doc_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_dup_cluster_doc_idx ON atlas.atlas_dup_cluster USING btree (document_id);
+
+
+--
+-- Name: atlas_dup_cluster_status_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_dup_cluster_status_idx ON atlas.atlas_dup_cluster USING btree (status, cluster_id);
+
+
+--
+-- Name: atlas_embed_queue_status_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_embed_queue_status_idx ON atlas.atlas_embed_queue USING btree (status, attempt_count);
+
+
+--
+-- Name: atlas_embedding_hnsw_halfvec_cos; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_embedding_hnsw_halfvec_cos ON atlas.atlas_embedding USING hnsw (((embedding)::public.halfvec(2560)) public.halfvec_cosine_ops) WITH (m='16', ef_construction='64');
+
+
+--
+-- Name: atlas_embedding_orphan_archive_dfsa_f_target_kind_target_id_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_embedding_orphan_archive_dfsa_f_target_kind_target_id_idx ON atlas.atlas_embedding_orphan_archive_dfsa_full_sweep_20260730_rev3 USING btree (target_kind, target_id);
+
+
+--
+-- Name: atlas_embedding_orphan_archive_dfsa_full_sweep_20_embedding_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_embedding_orphan_archive_dfsa_full_sweep_20_embedding_idx ON atlas.atlas_embedding_orphan_archive_dfsa_full_sweep_20260730_rev3 USING hnsw (((embedding)::public.halfvec(2560)) public.halfvec_cosine_ops) WITH (m='16', ef_construction='64');
+
+
+--
+-- Name: atlas_embedding_target_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_embedding_target_idx ON atlas.atlas_embedding USING btree (target_kind, target_id);
+
+
+--
+-- Name: atlas_epoch_document_snapshot_depth_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_epoch_document_snapshot_depth_idx ON atlas.atlas_epoch_document_snapshot USING btree (epoch_id, root_id, path_depth);
+
+
+--
+-- Name: atlas_epoch_document_snapshot_parent_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_epoch_document_snapshot_parent_idx ON atlas.atlas_epoch_document_snapshot USING btree (epoch_id, root_id, parent_rel_path);
+
+
+--
+-- Name: atlas_epoch_document_snapshot_path_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_epoch_document_snapshot_path_idx ON atlas.atlas_epoch_document_snapshot USING btree (root_id, rel_path);
+
+
+--
+-- Name: atlas_epoch_document_snapshot_root_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_epoch_document_snapshot_root_idx ON atlas.atlas_epoch_document_snapshot USING btree (epoch_id, root_id, status);
+
+
+--
+-- Name: atlas_fingerprint_sha_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_fingerprint_sha_idx ON atlas.atlas_fingerprint USING btree (sha256);
+
+
+--
+-- Name: atlas_g_domain_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_g_domain_idx ON atlas.atlas_g USING btree (domain_id);
+
+
+--
+-- Name: atlas_m_edges_dst_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_m_edges_dst_idx ON atlas.atlas_m_edges USING btree (dst_kind, dst_id);
+
+
+--
+-- Name: atlas_m_edges_kind_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_m_edges_kind_idx ON atlas.atlas_m_edges USING btree (kind);
+
+
+--
+-- Name: atlas_m_edges_src_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_m_edges_src_idx ON atlas.atlas_m_edges USING btree (src_kind, src_id);
+
+
+--
+-- Name: atlas_o_cls_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_o_cls_idx ON atlas.atlas_o USING btree (cls);
+
+
+--
+-- Name: atlas_similarity_edge_cosine_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_similarity_edge_cosine_idx ON atlas.atlas_similarity_edge USING btree (edge_scope, cosine DESC);
+
+
+--
+-- Name: atlas_similarity_edge_curvature_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_similarity_edge_curvature_idx ON atlas.atlas_similarity_edge USING btree (edge_scope, ollivier_ricci_curvature);
+
+
+--
+-- Name: atlas_similarity_edge_doc_a_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_similarity_edge_doc_a_idx ON atlas.atlas_similarity_edge USING btree (doc_id_a, edge_scope, cosine DESC);
+
+
+--
+-- Name: atlas_similarity_edge_doc_b_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_similarity_edge_doc_b_idx ON atlas.atlas_similarity_edge USING btree (doc_id_b, edge_scope, cosine DESC);
+
+
+--
+-- Name: atlas_similarity_edge_feed_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_similarity_edge_feed_idx ON atlas.atlas_similarity_edge USING btree (updated_at, edge_id) WHERE (ollivier_ricci_curvature IS NOT NULL);
+
+
+--
+-- Name: atlas_similarity_edge_root_rank_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_similarity_edge_root_rank_idx ON atlas.atlas_similarity_edge USING btree (root_id, edge_scope, edge_rank);
+
+
+--
+-- Name: atlas_t_domain_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_t_domain_idx ON atlas.atlas_t USING btree (domain_id);
+
+
+--
+-- Name: atlas_version_chain_doc_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_version_chain_doc_idx ON atlas.atlas_version_chain USING btree (document_id);
+
+
+--
+-- Name: atlas_version_chain_kind_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX atlas_version_chain_kind_idx ON atlas.atlas_version_chain USING btree (chain_kind, chain_id);
+
+
+--
+-- Name: audit_metrics_domain_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX audit_metrics_domain_idx ON atlas.audit_metrics USING btree (domain_id);
+
+
+--
+-- Name: idx_sim_edge_chunk_a; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX idx_sim_edge_chunk_a ON atlas.atlas_similarity_edge USING btree (chunk_id_a);
+
+
+--
+-- Name: idx_sim_edge_chunk_b; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX idx_sim_edge_chunk_b ON atlas.atlas_similarity_edge USING btree (chunk_id_b);
+
+
+--
+-- Name: object_envelope_parent_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX object_envelope_parent_idx ON atlas.object_envelope USING btree (parent_envelope_id);
+
+
+--
+-- Name: object_envelope_target_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX object_envelope_target_idx ON atlas.object_envelope USING btree (target_kind, target_id);
+
+
+--
+-- Name: rewrite_log_approved_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX rewrite_log_approved_idx ON atlas.rewrite_log USING btree (operator_approved);
+
+
+--
+-- Name: rewrite_log_target_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX rewrite_log_target_idx ON atlas.rewrite_log USING btree (target_kind, target_id);
+
+
+--
+-- Name: spec_predicate_log_run_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX spec_predicate_log_run_idx ON atlas.spec_predicate_log USING btree (run_id);
+
+
+--
+-- Name: spec_predicate_log_test_idx; Type: INDEX; Schema: atlas; Owner: -
+--
+
+CREATE INDEX spec_predicate_log_test_idx ON atlas.spec_predicate_log USING btree (test_key);
+
+
+--
+-- Name: asana_project asana_project_canonical_replacement_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.asana_project
+    ADD CONSTRAINT asana_project_canonical_replacement_id_fkey FOREIGN KEY (canonical_replacement_id) REFERENCES atlas.asana_project(id);
+
+
+--
+-- Name: asana_task asana_task_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.asana_task
+    ADD CONSTRAINT asana_task_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE SET NULL;
+
+
+--
+-- Name: asana_task asana_task_project_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.asana_task
+    ADD CONSTRAINT asana_task_project_id_fkey FOREIGN KEY (project_id) REFERENCES atlas.asana_project(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_a atlas_a_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_a
+    ADD CONSTRAINT atlas_a_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_a_edges atlas_a_edges_dst_a_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_a_edges
+    ADD CONSTRAINT atlas_a_edges_dst_a_id_fkey FOREIGN KEY (dst_a_id) REFERENCES atlas.atlas_a(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_a_edges atlas_a_edges_src_a_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_a_edges
+    ADD CONSTRAINT atlas_a_edges_src_a_id_fkey FOREIGN KEY (src_a_id) REFERENCES atlas.atlas_a(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_c atlas_c_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_c
+    ADD CONSTRAINT atlas_c_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_chunk atlas_chunk_document_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_chunk
+    ADD CONSTRAINT atlas_chunk_document_id_fkey FOREIGN KEY (document_id) REFERENCES atlas.atlas_document(document_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_doc_code_link atlas_doc_code_link_code_document_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_doc_code_link
+    ADD CONSTRAINT atlas_doc_code_link_code_document_id_fkey FOREIGN KEY (code_document_id) REFERENCES atlas.atlas_document(document_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_doc_code_link atlas_doc_code_link_doc_document_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_doc_code_link
+    ADD CONSTRAINT atlas_doc_code_link_doc_document_id_fkey FOREIGN KEY (doc_document_id) REFERENCES atlas.atlas_document(document_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_doc_code_queue atlas_doc_code_queue_doc_document_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_doc_code_queue
+    ADD CONSTRAINT atlas_doc_code_queue_doc_document_id_fkey FOREIGN KEY (doc_document_id) REFERENCES atlas.atlas_document(document_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_doc_relevance atlas_doc_relevance_document_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_doc_relevance
+    ADD CONSTRAINT atlas_doc_relevance_document_id_fkey FOREIGN KEY (document_id) REFERENCES atlas.atlas_document(document_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_document atlas_document_root_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_document
+    ADD CONSTRAINT atlas_document_root_id_fkey FOREIGN KEY (root_id) REFERENCES atlas.atlas_root(root_id) ON DELETE RESTRICT;
+
+
+--
+-- Name: atlas_dup_cluster atlas_dup_cluster_document_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_dup_cluster
+    ADD CONSTRAINT atlas_dup_cluster_document_id_fkey FOREIGN KEY (document_id) REFERENCES atlas.atlas_document(document_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_e atlas_e_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_e
+    ADD CONSTRAINT atlas_e_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_embed_queue atlas_embed_queue_chunk_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_embed_queue
+    ADD CONSTRAINT atlas_embed_queue_chunk_id_fkey FOREIGN KEY (chunk_id) REFERENCES atlas.atlas_chunk(chunk_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_embed_queue atlas_embed_queue_document_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_embed_queue
+    ADD CONSTRAINT atlas_embed_queue_document_id_fkey FOREIGN KEY (document_id) REFERENCES atlas.atlas_document(document_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_epoch_document_snapshot atlas_epoch_document_snapshot_document_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_epoch_document_snapshot
+    ADD CONSTRAINT atlas_epoch_document_snapshot_document_id_fkey FOREIGN KEY (document_id) REFERENCES atlas.atlas_document(document_id) ON DELETE RESTRICT;
+
+
+--
+-- Name: atlas_epoch_document_snapshot atlas_epoch_document_snapshot_epoch_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_epoch_document_snapshot
+    ADD CONSTRAINT atlas_epoch_document_snapshot_epoch_id_fkey FOREIGN KEY (epoch_id) REFERENCES atlas.atlas_epoch(epoch_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_epoch_document_snapshot atlas_epoch_document_snapshot_root_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_epoch_document_snapshot
+    ADD CONSTRAINT atlas_epoch_document_snapshot_root_id_fkey FOREIGN KEY (root_id) REFERENCES atlas.atlas_root(root_id) ON DELETE RESTRICT;
+
+
+--
+-- Name: atlas_epoch_root atlas_epoch_root_epoch_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_epoch_root
+    ADD CONSTRAINT atlas_epoch_root_epoch_id_fkey FOREIGN KEY (epoch_id) REFERENCES atlas.atlas_epoch(epoch_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_epoch_root atlas_epoch_root_root_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_epoch_root
+    ADD CONSTRAINT atlas_epoch_root_root_id_fkey FOREIGN KEY (root_id) REFERENCES atlas.atlas_root(root_id) ON DELETE RESTRICT;
+
+
+--
+-- Name: atlas_f atlas_f_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_f
+    ADD CONSTRAINT atlas_f_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_g atlas_g_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_g
+    ADD CONSTRAINT atlas_g_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_m atlas_m_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_m
+    ADD CONSTRAINT atlas_m_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_m_edges atlas_m_edges_affixion_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_m_edges
+    ADD CONSTRAINT atlas_m_edges_affixion_fkey FOREIGN KEY (affixion) REFERENCES atlas.affixion_strength(glyph);
+
+
+--
+-- Name: atlas_o atlas_o_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_o
+    ADD CONSTRAINT atlas_o_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_p atlas_p_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_p
+    ADD CONSTRAINT atlas_p_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_pi atlas_pi_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_pi
+    ADD CONSTRAINT atlas_pi_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_provenance atlas_provenance_parent_event_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_provenance
+    ADD CONSTRAINT atlas_provenance_parent_event_id_fkey FOREIGN KEY (parent_event_id) REFERENCES atlas.atlas_provenance(event_id);
+
+
+--
+-- Name: atlas_r atlas_r_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_r
+    ADD CONSTRAINT atlas_r_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_similarity_edge atlas_similarity_edge_chunk_id_a_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_similarity_edge
+    ADD CONSTRAINT atlas_similarity_edge_chunk_id_a_fkey FOREIGN KEY (chunk_id_a) REFERENCES atlas.atlas_chunk(chunk_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_similarity_edge atlas_similarity_edge_chunk_id_b_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_similarity_edge
+    ADD CONSTRAINT atlas_similarity_edge_chunk_id_b_fkey FOREIGN KEY (chunk_id_b) REFERENCES atlas.atlas_chunk(chunk_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_similarity_edge atlas_similarity_edge_doc_id_a_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_similarity_edge
+    ADD CONSTRAINT atlas_similarity_edge_doc_id_a_fkey FOREIGN KEY (doc_id_a) REFERENCES atlas.atlas_document(document_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_similarity_edge atlas_similarity_edge_doc_id_b_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_similarity_edge
+    ADD CONSTRAINT atlas_similarity_edge_doc_id_b_fkey FOREIGN KEY (doc_id_b) REFERENCES atlas.atlas_document(document_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_similarity_edge atlas_similarity_edge_root_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_similarity_edge
+    ADD CONSTRAINT atlas_similarity_edge_root_id_fkey FOREIGN KEY (root_id) REFERENCES atlas.atlas_root(root_id);
+
+
+--
+-- Name: atlas_t atlas_t_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_t
+    ADD CONSTRAINT atlas_t_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_t atlas_t_parent_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_t
+    ADD CONSTRAINT atlas_t_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES atlas.atlas_t(id);
+
+
+--
+-- Name: atlas_version_chain atlas_version_chain_document_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_version_chain
+    ADD CONSTRAINT atlas_version_chain_document_id_fkey FOREIGN KEY (document_id) REFERENCES atlas.atlas_document(document_id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_x_m atlas_x_m_dst_m_edge_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_m
+    ADD CONSTRAINT atlas_x_m_dst_m_edge_id_fkey FOREIGN KEY (dst_m_edge_id) REFERENCES atlas.atlas_m_edges(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_x_m atlas_x_m_src_m_edge_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_m
+    ADD CONSTRAINT atlas_x_m_src_m_edge_id_fkey FOREIGN KEY (src_m_edge_id) REFERENCES atlas.atlas_m_edges(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_x_p atlas_x_p_dst_p_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_p
+    ADD CONSTRAINT atlas_x_p_dst_p_id_fkey FOREIGN KEY (dst_p_id) REFERENCES atlas.atlas_p(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_x_p atlas_x_p_src_p_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_p
+    ADD CONSTRAINT atlas_x_p_src_p_id_fkey FOREIGN KEY (src_p_id) REFERENCES atlas.atlas_p(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_x_r atlas_x_r_dst_r_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_r
+    ADD CONSTRAINT atlas_x_r_dst_r_id_fkey FOREIGN KEY (dst_r_id) REFERENCES atlas.atlas_r(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_x_r atlas_x_r_src_r_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_r
+    ADD CONSTRAINT atlas_x_r_src_r_id_fkey FOREIGN KEY (src_r_id) REFERENCES atlas.atlas_r(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_x_t atlas_x_t_dst_t_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_t
+    ADD CONSTRAINT atlas_x_t_dst_t_id_fkey FOREIGN KEY (dst_t_id) REFERENCES atlas.atlas_t(id) ON DELETE CASCADE;
+
+
+--
+-- Name: atlas_x_t atlas_x_t_src_t_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.atlas_x_t
+    ADD CONSTRAINT atlas_x_t_src_t_id_fkey FOREIGN KEY (src_t_id) REFERENCES atlas.atlas_t(id) ON DELETE CASCADE;
+
+
+--
+-- Name: audit_metrics audit_metrics_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.audit_metrics
+    ADD CONSTRAINT audit_metrics_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: fp_outcome_log fp_outcome_log_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.fp_outcome_log
+    ADD CONSTRAINT fp_outcome_log_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: glyph_values_ptr glyph_values_ptr_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.glyph_values_ptr
+    ADD CONSTRAINT glyph_values_ptr_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- Name: object_envelope object_envelope_parent_envelope_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.object_envelope
+    ADD CONSTRAINT object_envelope_parent_envelope_id_fkey FOREIGN KEY (parent_envelope_id) REFERENCES atlas.object_envelope(envelope_id);
+
+
+--
+-- Name: object_envelope object_envelope_source_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.object_envelope
+    ADD CONSTRAINT object_envelope_source_snapshot_id_fkey FOREIGN KEY (source_snapshot_id) REFERENCES atlas.source_snapshot(snapshot_id);
+
+
+--
+-- Name: spec_predicate_log spec_predicate_log_domain_id_fkey; Type: FK CONSTRAINT; Schema: atlas; Owner: -
+--
+
+ALTER TABLE ONLY atlas.spec_predicate_log
+    ADD CONSTRAINT spec_predicate_log_domain_id_fkey FOREIGN KEY (domain_id) REFERENCES atlas.domain(id) ON DELETE CASCADE;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict amPf9Ku7tATKWU1mJPeMU0RTU6Skkav0pWbrGOC09CTzrOGHjpbOBTZzaLKTuNh
+
