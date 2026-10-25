@@ -8,6 +8,7 @@ partial
 
 ## How to run
 make run, make test, make slurm (added as modules land)
+- `make run MOD=atlas-queries ARGS="<provenance-check|inbox-three-way|project-table> [--root-id N] [--format tsv|csv] [--out FILE --apply]"` runs a read-only Atlas query using the DSN in `$ATLAS_DSN`.
 
 ## Depends on
 Atlas (Postgres/pgvector on head), SLURM, Python 3.12 with uv
