@@ -16,4 +16,7 @@ protected_names_file = "/home/radar-41-0/projects/housekeeping/protected_names.t
 [intake]
 machine = "winbox"
 target_root = "/home/radar-41-0/inbox"
+# Each source is {name, remote}; copies land in <target_root>/<machine>/<name>/.
+# Remotes are made by hand with rclone config on radar-41. Example:
+# sources = [{ name = "c", remote = "winbox-c:/" }, { name = "cloud", remote = "cloud-remote:/" }]
 sources = []

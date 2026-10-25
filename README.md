@@ -8,6 +8,7 @@ partial
 
 ## How to run
 make run, make test, make slurm (added as modules land)
+- intake: `make run MOD=intake ARGS="copy"` (dry-run; add `--apply` to copy), then `ARGS="check"` and `ARGS="report"`
 
 ## Depends on
 Atlas (Postgres/pgvector on head), SLURM, Python 3.12 with uv
