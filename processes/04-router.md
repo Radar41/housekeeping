@@ -23,7 +23,7 @@ One-time on head, then a health check whenever something looks wrong. The router
    model = "qwen3.5:9b"
    timeout_s = 120
 
-   [router.roles.embedder]           # wherever Atlas serves Qwen3-Embedding-4B
+   [router.roles.embedder]           # parked: nothing serves this yet (see below)
    url = "http://127.0.0.1:8101"
    model = "qwen3-embedding-4b"
    timeout_s = 30
@@ -31,6 +31,7 @@ One-time on head, then a health check whenever something looks wrong. The router
    This is the working radar-41 layout (verified 2026-10-26): the workers serve the router, and head's GPU (131k context) stays free for your own OpenCode sessions. Keep `[router.overflow_inflight]` and `[router.andromeda]` from the example.
    Set `[router] host = "127.0.0.1"` unless another machine must reach it.
 
+   Atlas does not serve its embedder. Its ingest loads Qwen3-Embedding-4B in-process with sentence-transformers (`endpoint` is empty in every ingest run, process 1 step 4), so the embedder role stays down until a server for that exact model exists. A down embedder does not affect reader or coder.
    The embedder must be the same model and precision that made the existing Atlas vectors (Qwen3-Embedding-4B, 2,560 dimensions). Vectors from another model, such as `nomic-embed-text` (768 dimensions), cannot be compared with them. A different quantization of the same model gives close but not identical vectors, so check one known document against its stored vector before using it for new embeddings.
 2. Try it in the foreground first.
    ```bash

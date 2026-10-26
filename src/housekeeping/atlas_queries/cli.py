@@ -23,6 +23,7 @@ QUERIES = {
     "provenance-payload-keys": "provenance_payload_keys.sql",
     "pipeline-inventory": "pipeline_inventory.sql",
     "pipeline-dirs": "pipeline_dirs.sql",
+    "ingest-runs": "ingest_runs.sql",
 }
 NEEDS_ROOT = {"inbox-three-way"}
 OPTIONAL_ROOT = {"pipeline-inventory", "pipeline-dirs"}  # no --root-id means every root
