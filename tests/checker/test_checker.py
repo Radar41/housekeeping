@@ -128,3 +128,15 @@ def test_protected_file_missing_via_main(hk_config, capsys):
 def test_usage_errors(hk_config):
     assert cli.main([]) == 2
     assert cli.main(["--all"]) == 2
+
+
+def test_emdash_skips_unchanged_copied_originals_only(tmp_path):
+    import hashlib
+    repo = build_repo(tmp_path, files={"orig.md": "a " + EMDASH + " b\n"})
+    digest = hashlib.sha256((repo / "orig.md").read_bytes()).hexdigest()
+    (repo / "SOURCES.sha256").write_text(f"{digest}  ./orig.md\n")
+    git(repo, "add", "-A")
+    assert statuses(repo)["emdash"] == "PASS"
+    (repo / "orig.md").write_text("edited " + EMDASH + "\n")
+    git(repo, "add", "-A")
+    assert statuses(repo)["emdash"] == "FAIL"
