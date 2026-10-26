@@ -1,0 +1,20 @@
+{
+  "args": {
+    "action": "file_move",
+    "chain_id": "c1",
+    "from_path": "/home/h/inbox/a.txt",
+    "to_path": "/home/h/projects/alpha/a.txt",
+    "sha256": "abc123",
+    "batch": "t1",
+    "event_id": "00000000-0000-4000-8000-000000000001"
+  },
+  "sql": "INSERT INTO atlas.atlas_provenance (event_id, actor, action, target_table, target_id, payload_jsonb) VALUES (%s, %s, %s, %s, %s, %s::jsonb)",
+  "params": [
+    "00000000-0000-4000-8000-000000000001",
+    "hk-mover",
+    "file_move",
+    "atlas.atlas_document",
+    "c1",
+    "{\"batch\": \"t1\", \"chain_id\": \"c1\", \"from_path\": \"/home/h/inbox/a.txt\", \"sha256\": \"abc123\", \"to_path\": \"/home/h/projects/alpha/a.txt\"}"
+  ]
+}

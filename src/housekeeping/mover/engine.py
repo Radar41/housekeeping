@@ -10,6 +10,7 @@ from pathlib import Path
 
 from housekeeping import config
 from housekeeping.log import log_line
+from housekeeping.mover import provenance
 
 DECISIONS = {"live", "parked", "protected", "absorbed"}
 TRUE = {"1", "true", "yes", "y", "t"}
@@ -24,6 +25,8 @@ class Settings:
     protected: Path
     batch: str
     day: str
+    write_provenance: bool = True
+    dsn_env: str = ""
 
     @classmethod
     def from_config(cls, batch: str) -> "Settings":
@@ -36,7 +39,19 @@ class Settings:
             protected=Path(mv["protected_dir"]),
             batch=batch,
             day=date.today().isoformat(),
+            write_provenance=bool(mv.get("write_provenance", True)),
+            dsn_env=cfg.get("atlas", {}).get("dsn_env", ""),
         )
+
+    def record(self, action: str, chain_id: str, src, dst, sha: str) -> list[str]:
+        """Provenance row for one verified move. A failure is reported, never raised."""
+        if not self.write_provenance:
+            return []
+        try:
+            provenance.write(self.dsn_env, action, chain_id, src, dst, sha, self.batch)
+        except Exception as e:
+            return [f"provenance write failed: {type(e).__name__}: {e}"]
+        return []
 
     @property
     def batch_dir(self) -> Path:
@@ -319,6 +334,7 @@ def apply_step(s: Settings, st: Step, push: bool) -> list[str]:
         log_line(log, "git-init", st.repo, st.repo, st.row.chain_id)
     move_safe(st.src, st.dst, st.sha)
     log_line(log, st.kind, st.src, st.dst, ident)
+    notes += s.record("file_move", st.row.chain_id, st.src, st.dst, st.sha)
     if st.kind == "quarantine":
         _manifest(s, st)
     if st.repo is not None:
@@ -365,7 +381,9 @@ def plan_undo(entries, since: datetime | None) -> list[UndoStep]:
     return out
 
 
-def apply_undo(log: Path, u: UndoStep) -> None:
+def apply_undo(s: Settings, log: Path, u: UndoStep) -> list[str]:
     _, _, src, dst, ident = u.entry
-    move_safe(Path(dst), Path(src), _split_ident(ident)[1])
+    chain, sha = _split_ident(ident)
+    move_safe(Path(dst), Path(src), sha)
     log_line(log, "undo", dst, src, ident)
+    return s.record("file_move_undo", chain, dst, src, sha)

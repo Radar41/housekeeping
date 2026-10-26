@@ -34,7 +34,7 @@ def env(tmp_path, monkeypatch):
     cfg.write_text(
         f'[paths]\nhome = "{home}"\n'
         f'[mover]\nmoves_log = "{tmp_path / "moves.tsv"}"\n'
-        f'quarantine = "{home / "quarantine"}"\nprotected_dir = "{home / "protected"}"\n'
+        f'quarantine = "{home / "quarantine"}"\nprotected_dir = "{home / "protected"}"\nwrite_provenance = false\n'
     )
     monkeypatch.setenv("HK_CONFIG", str(cfg))
     config.load.cache_clear()

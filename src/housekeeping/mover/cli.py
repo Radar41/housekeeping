@@ -4,7 +4,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from housekeeping.mover import engine
+from housekeeping.mover import engine, provenance
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -22,6 +22,7 @@ def _parser() -> argparse.ArgumentParser:
     un.add_argument("moves_log")
     un.add_argument("--since", help="ISO timestamp, undo only entries at or after it")
     un.add_argument("--apply", action="store_true", dest="do_apply")
+    un.add_argument("--batch", help="batch name for provenance rows, default is the log file stem")
     return p
 
 
@@ -71,6 +72,7 @@ def _undo(args) -> int:
         since = datetime.fromisoformat(args.since)
         if since.tzinfo is None:
             since = since.replace(tzinfo=timezone.utc)
+    s = engine.Settings.from_config(args.batch or log.stem)
     steps = engine.plan_undo(engine.read_log(log), since)
     if not steps:
         print("nothing to undo")
@@ -81,8 +83,10 @@ def _undo(args) -> int:
         label = "plan" if not args.do_apply and u.status == "todo" else u.status
         if args.do_apply and u.status == "todo":
             try:
-                engine.apply_undo(log, u)
+                notes = engine.apply_undo(s, log, u)
                 label = "undone"
+                if notes:
+                    rc, u.reason = 1, "; ".join(notes)
             except Exception as e:
                 label, u.reason = "error", f"{type(e).__name__}: {e}"
         if label == "error":
@@ -95,6 +99,13 @@ def _undo(args) -> int:
 
 def main(argv: list[str]) -> int:
     args = _parser().parse_args(argv)
+    try:
+        return _dispatch(args)
+    finally:
+        provenance.close()
+
+
+def _dispatch(args) -> int:
     try:
         if args.cmd == "plan":
             return _plan(args, execute=False)
