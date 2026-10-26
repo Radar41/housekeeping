@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 
 SCHEMA = Path(__file__).resolve().parents[2] / "schema.txt"
-TABLES = ["atlas_root", "atlas_document", "atlas_version_chain", "atlas_doc_relevance", "atlas_provenance"]
+TABLES = ["atlas_root", "atlas_document", "atlas_version_chain", "atlas_doc_relevance", "atlas_provenance",
+          "atlas_chunk"]
 SQL_DIR = Path(__file__).resolve().parents[2] / "src/housekeeping/atlas_queries/sql"
 
 
@@ -90,5 +91,5 @@ def db(pg_dsn):
 
     with psycopg.connect(pg_dsn, autocommit=True) as conn:
         conn.execute("TRUNCATE atlas.atlas_doc_relevance, atlas.atlas_version_chain, "
-                     "atlas.atlas_document, atlas.atlas_root, atlas.atlas_provenance")
+                     "atlas.atlas_document, atlas.atlas_root, atlas.atlas_provenance, atlas.atlas_chunk")
         yield conn
