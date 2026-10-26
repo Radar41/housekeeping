@@ -1,0 +1,12 @@
+[Unit]
+Description=housekeeping GPU scheduler (embedding yields to router roles)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/projects/housekeeping
+ExecStart=%h/.local/bin/uv run hk sched run
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

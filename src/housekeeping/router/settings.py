@@ -23,6 +23,19 @@ class AndromedaCfg:
 
 
 @dataclass(frozen=True)
+class GateCfg:
+    """Hold a chat request until the scheduler says the role's GPU is free (processes/09-scheduler.md)."""
+    enabled: bool
+    state_file: Path | None
+    wait_s: float
+    stale_s: float
+    poll_s: float
+
+
+GATE_OFF = GateCfg(False, None, 0.0, 0.0, 1.0)
+
+
+@dataclass(frozen=True)
 class Settings:
     host: str
     port: int
@@ -32,6 +45,7 @@ class Settings:
     health_interval_s: float
     health_timeout_s: float
     log_path: Path
+    gate: GateCfg = GATE_OFF
 
     @classmethod
     def from_config(cls, cfg: dict) -> "Settings":
@@ -46,6 +60,10 @@ class Settings:
         if unknown:
             raise ValueError(f"andromeda.roles_allowed has unknown roles: {sorted(unknown)}")
         andromeda = AndromedaCfg(a["url"].rstrip("/"), allowed, bool(a["enabled"]), dict(a.get("models", {})))
+        # [router.gate] is the one optional table: configs written before the scheduler keep working.
+        g = r.get("gate")
+        gate = GATE_OFF if g is None else GateCfg(
+            bool(g["enabled"]), Path(g["state_file"]), float(g["wait_s"]), float(g["stale_s"]), float(g["poll_s"]))
         return cls(
             host=r["host"],
             port=int(r["port"]),
@@ -55,4 +73,5 @@ class Settings:
             health_interval_s=float(r["health_interval_s"]),
             health_timeout_s=float(r["health_timeout_s"]),
             log_path=Path(r["log"]),
+            gate=gate,
         )
