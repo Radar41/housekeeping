@@ -8,6 +8,7 @@ partial
 
 ## How to run
 make run, make test, make slurm (added as modules land)
+python templates/render.py templates/slurm/job.sbatch --set key=value ... [--out PATH --apply] renders a template (dry-run by default)
 
 ## Depends on
 Atlas (Postgres/pgvector on head), SLURM, Python 3.12 with uv
