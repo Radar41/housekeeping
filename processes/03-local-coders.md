@@ -30,7 +30,24 @@ Ollama gives a 4,096-token context to any model on a GPU with less than 24 GB, a
    sudo systemctl restart ollama
    ollama run qwen3.5:9b "say ok" && ollama ps
    ```
-   `ollama ps` must show `CONTEXT 65536` and `100% GPU`. If it shows a CPU split, the card is too small for that model at 64k: set the value to `32768` (OpenCode will be weaker) or use a smaller model on that node.
+   `ollama ps` must show `CONTEXT 65536` and `100% GPU`. If it shows a CPU split, the card is too small for that model at 64k: add the two memory savers below, or use a smaller model on that node.
+
+   Going above 64k. 64k is OpenCode's minimum, not a limit. The ceiling is the smaller of the model's own window and what fits in VRAM:
+
+   | Model | Own window ([Ollama library](https://ollama.com/library)) | Use for |
+   |---|---|---|
+   | `qwen3.5:9b` | 256K | OpenCode, Codex, Claude Code, reader |
+   | `deepseek-coder-v2:lite` (16b) | 160K | coder role |
+   | `qwen2.5-coder:14b` | 32K | short completions only; cannot reach OpenCode's 64k |
+
+   The context memory (K/V cache) grows with context length. Two settings shrink it ([Ollama FAQ](https://docs.ollama.com/faq)); add them in the same `sudo systemctl edit ollama` block:
+   ```ini
+   Environment="OLLAMA_FLASH_ATTENTION=1"
+   Environment="OLLAMA_KV_CACHE_TYPE=q8_0"     # about half the memory of the default f16, very small quality loss
+   Environment="OLLAMA_NUM_PARALLEL=1"         # memory scales with parallel x context; keep 1 for big contexts
+   ```
+   Then raise `OLLAMA_CONTEXT_LENGTH` one step at a time (65536, 98304, 131072, ...), restart, run the model, and check `ollama ps`. Keep the largest value that still shows `100% GPU`. `q4_0` saves more but loses more precision, and Qwen models are more sensitive to it.
+   A single session can also ask for more without changing the default: `/set parameter num_ctx 131072` inside `ollama run`, or `"options": {"num_ctx": 131072}` in an API call.
 3. Workers only (node-a, node-b): let head reach this node's Ollama over the direct link, and nowhere else. (sudo) Add one more line in `sudo systemctl edit ollama`:
    ```ini
    Environment="OLLAMA_HOST=10.10.1.2:11434"     # node-a; use 10.10.2.2:11434 on node-b
@@ -43,9 +60,8 @@ Ollama gives a 4,096-token context to any model on a GPU with less than 24 GB, a
    After this, scripts on the worker must call `$OLLAMA_HOST`, not `127.0.0.1`. The batch runner in `~/radar41-orchestrator` needs that change.
 4. Pull the models this node will serve.
    ```bash
-   ollama pull qwen3.5:9b            # reader, on head
-   ollama pull qwen2.5-coder:14b     # coder, on head (fits the RTX 4000 Ada)
-   ollama pull deepseek-coder-v2:lite   # coder, on node-a and node-b
+   ollama pull qwen3.5:9b               # every node: the agent model (256K window, tool use)
+   ollama pull deepseek-coder-v2:lite   # node-a and node-b: coder role (160K window)
    ```
 5. Rust toolchain, for Rust pipelines and anything that builds from source. No sudo.
    ```bash
@@ -72,8 +88,7 @@ Ollama gives a 4,096-token context to any model on a GPU with less than 24 GB, a
          "name": "Ollama (this node)",
          "options": { "baseURL": "http://127.0.0.1:11434/v1" },
          "models": {
-           "qwen3.5:9b": { "name": "Qwen3.5 9B" },
-           "qwen2.5-coder:14b": { "name": "Qwen2.5 Coder 14B" }
+           "qwen3.5:9b": { "name": "Qwen3.5 9B" }
          }
        },
        "housekeeping": {
@@ -94,7 +109,7 @@ Ollama gives a 4,096-token context to any model on a GPU with less than 24 GB, a
    ```bash
    npm install -g @openai/codex
    ollama launch codex --config
-   codex --oss -m qwen2.5-coder:14b
+   codex --oss -m qwen3.5:9b
    ```
 8. Claude Code with Ollama ([Ollama Claude Code guide](https://docs.ollama.com/integrations/claude-code)). Also direct to Ollama.
    ```bash
