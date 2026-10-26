@@ -138,8 +138,20 @@ class Pipeline:
                 raise Incompatible("root path changed: create a new run")
             current = self.atlas.contract(root["excludes"], old["protected_names"],
                                           old["txt_threshold"], old["md_threshold"], old["max_chunks"])
-            if current["signature"] != old["signature"]:
-                raise Incompatible("source/backend/excludes changed: run is frozen; create a new run")
+            # Staging-tool code (stage/*) is recorded but not frozen: fixing this tool must
+            # not strand a run. Atlas source, backend settings and excludes stay frozen.
+            def semantic(settings):
+                keep = {k: v for k, v in settings.items() if k != "signature"}
+                keep["source"] = {k: v for k, v in keep.get("source", {}).items() if not k.startswith("stage/")}
+                return keep
+            # Compare only the fields the contract defines; create() adds run-local fields.
+            b = semantic(current)
+            a = {k: v for k, v in semantic(old).items() if k in b}
+            if a != b:
+                changed = sorted(k for k in b if a.get(k) != b[k])
+                if "source" in changed:
+                    changed += sorted(k for k in b["source"] if a["source"].get(k) != b["source"][k])
+                raise Incompatible(f"run is frozen; changed: {', '.join(changed)}; create a new run")
         return run
 
     def event(self, c, rid, kind, n=1, elapsed=None, detail=None):

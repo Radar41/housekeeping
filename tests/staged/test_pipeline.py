@@ -65,7 +65,8 @@ class FakeAtlas:
         )
 
     def contract(self, excludes, names, txt, md, max_chunks):
-        return dict(signature=self.signature + json.dumps(excludes), excludes=excludes, protected_names=names,
+        return dict(signature=self.signature + json.dumps(excludes), source={"atlas/fake.py": self.signature},
+                    excludes=excludes, protected_names=names,
                     txt_threshold=txt, md_threshold=md, max_chunks=max_chunks)
 
     def decision(self, rel, path):
@@ -422,3 +423,21 @@ def test_text_postgres_rejects_marks_file_and_worker_continues(db):
         assert [r["rel"] for r in rows] == ["a_nul.txt", "b_meta.txt"]
         assert all(r["reason"].startswith("db_") for r in rows)
         assert c.execute("SELECT count(*) n FROM hk_stage.vector WHERE run_id=%s", (rid,)).fetchone()["n"] == 1
+
+
+def test_staging_code_change_does_not_freeze_run_but_atlas_change_does(db):
+    p, _, a, root = pipeline(db)
+    a.source_fingerprints = {"stage/engine.py": "old", "atlas/x.py": "same"}
+
+    def contract(excludes, names, txt, md, max_chunks):
+        settings = dict(source=dict(a.source_fingerprints), excludes=excludes, protected_names=names,
+                        txt_threshold=txt, md_threshold=md, max_chunks=max_chunks)
+        settings["signature"] = json.dumps(settings, sort_keys=True)
+        return settings
+    a.contract = contract
+    rid = p.create(21, ".", [], 1024, 1024, 100, 4096)
+    a.source_fingerprints = {"stage/engine.py": "new", "atlas/x.py": "same"}
+    p.pause(rid, False)  # passes: only staging-tool code changed
+    a.source_fingerprints = {"stage/engine.py": "new", "atlas/x.py": "changed"}
+    with pytest.raises(Incompatible, match="atlas/x.py"):
+        p.pause(rid, True)
