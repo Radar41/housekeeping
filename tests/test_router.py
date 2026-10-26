@@ -1,5 +1,5 @@
-import asyncio
 import json
+import asyncio
 
 import httpx
 import pytest
@@ -50,7 +50,7 @@ def world(tmp_path):
     ups = {n: fake_upstream(n) for n in ("embedder", "reader", "coder", "andromeda")}
     cfg = {"router": {
         "host": "127.0.0.1", "port": 1, "log": str(tmp_path / "router.tsv"),
-        "heartbeat_dir": str(tmp_path / "hb"), "health_interval_s": 60, "health_timeout_s": 1,
+        "health_interval_s": 60, "health_timeout_s": 1,
         "overflow_inflight": {"reader": 1, "coder": 1},
         "roles": {n: {"url": f"http://{n}.test", "model": f"{n}-model", "timeout_s": 5}
                   for n in ("embedder", "reader", "coder")},
@@ -155,9 +155,6 @@ async def test_health_aggregation(world):
     await router.check_all()
     r = await front.get("/health")
     assert r.status_code == 503 and r.json()["roles"]["coder"]["up"] is False
-    beat = json.loads((router.s.heartbeat_dir / "router.coder.json").read_text())
-    assert beat["status"] == "down"
-    assert json.loads((router.s.heartbeat_dir / "router.json").read_text())["status"] == "down"
 
 
 @pytest.mark.anyio
@@ -181,3 +178,34 @@ async def test_log_has_no_bodies(world):
     ts, action, source, target, ident = lines[0].split("\t")
     assert (action, source, target) == ("route", "reader", "http://reader.test")
     assert "latency_ms=" in ident
+
+
+@pytest.mark.anyio
+async def test_cli_health_json(world, monkeypatch, capsys):
+    from housekeeping.router import cli
+    router, front, ups, _ = world
+    await router.check_all()
+    snap = router.snapshot()
+
+    class R:
+        def json(self):
+            return snap
+
+    monkeypatch.setattr(cli.httpx, "get", lambda *a, **k: R())
+    assert cli.health(router.s, as_json=True) == 0
+    assert json.loads(capsys.readouterr().out)["roles"]["reader"]["up"] is True
+    snap["ok"] = False
+    assert cli.health(router.s, as_json=True) == 1
+    assert cli.health(router.s) == 1
+    assert "reader" in capsys.readouterr().out
+
+
+def test_cli_health_unreachable_json(world, monkeypatch, capsys):
+    from housekeeping.router import cli
+
+    def boom(*a, **k):
+        raise cli.httpx.ConnectError("x")
+
+    monkeypatch.setattr(cli.httpx, "get", boom)
+    assert cli.health(world[0].s, as_json=True) == 2
+    assert json.loads(capsys.readouterr().out)["ok"] is False

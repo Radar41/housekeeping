@@ -16,7 +16,6 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from housekeeping.log import log_line
 
-from .heartbeat import write_heartbeat
 from .settings import CHAT_ROLES, ROLES, Settings
 
 _RID_OK = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -145,14 +144,6 @@ class Router:
         for r, h in zip(ROLES, results):
             self.health[r] = h
         self.andromeda_health = results[3] if a.enabled else Health()
-        self._beat()
-
-    def _beat(self) -> None:
-        d = self.s.heartbeat_dir
-        snap = self.snapshot()
-        write_heartbeat(d, "router", snap["ok"], {"andromeda": snap["andromeda"]})
-        for r in ROLES:
-            write_heartbeat(d, f"router.{r}", snap["roles"][r]["up"], snap["roles"][r])
 
     async def health_loop(self) -> None:
         while True:

@@ -22,7 +22,6 @@ sources = []
 host = "0.0.0.0"
 port = 8000
 log = "logs/router.tsv"
-heartbeat_dir = "heartbeats"
 health_interval_s = 10
 health_timeout_s = 3
 

@@ -32,7 +32,6 @@ class Settings:
     health_interval_s: float
     health_timeout_s: float
     log_path: Path
-    heartbeat_dir: Path
 
     @classmethod
     def from_config(cls, cfg: dict) -> "Settings":
@@ -56,5 +55,4 @@ class Settings:
             health_interval_s=float(r["health_interval_s"]),
             health_timeout_s=float(r["health_timeout_s"]),
             log_path=Path(r["log"]),
-            heartbeat_dir=Path(r["heartbeat_dir"]),
         )
