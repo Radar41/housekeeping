@@ -237,3 +237,14 @@ def test_ingest_runs(db):
     assert [r["run_id"] for r in rows] == ["r1", "r2"]
     assert rows[0]["indexed"] == 10 and rows[0]["dim"] == "2560" and rows[0]["endpoint"] is None
     assert rows[1]["indexed"] == 0 and rows[1]["failed"] == 6 and rows[1]["unchanged"] is None
+
+
+def test_secret_scan(db):
+    seed_pipelines(db)
+    fake = "gh" + "p_" + "A" * 36
+    add_chunk(db, 900, 2, 9, "token = " + fake)
+    add_chunk(db, 901, 3, 9, "nothing here")
+    rows = query(db, "secret_scan.sql")
+    got = {r["rel_path"]: r["kinds"] for r in rows}
+    assert got == {"proj/fit.py": "github_token,key_assignment"}
+    assert all("chunk_text" not in r for r in rows)

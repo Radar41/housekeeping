@@ -41,6 +41,34 @@ Run once now, before anything else builds on Atlas. Run again after any large sw
    make run MOD=atlas-queries ARGS="ingest-runs --out $P/ingest_$D.tsv --apply"
    ```
 
+## Refresh the index (writes to Atlas)
+
+When step 5 shows many new files or step 6 shows a failing timer. Use the Atlas launcher; it runs a preflight, a 50-file dry smoke, waits for you to type START, then submits one Slurm job pinned to head (home is head-local, so this uses head's GPU only).
+
+1. Credential folders out first. Add to the root's excludes anything that holds keys (patterns match at any depth, like `.venv/`):
+   ```bash
+   psql -d atlas -Atc "select x from atlas.atlas_root, jsonb_array_elements_text(excludes) x where root_id=21 order by 1"
+   ```
+2. Free head's GPU and run.
+   ```bash
+   systemctl --user stop hk-router; sudo systemctl stop ollama
+   cd /srv/warm/cluster/atlas
+   ./bin/atlas-home-topdown preflight          # must end in PASS
+   ATLAS_HOME_SLURM_TIME=48:00:00 ./bin/atlas-home-topdown go
+   squeue -u $USER; ./bin/atlas-home-topdown status
+   ```
+   If the job runs out of time: `./bin/atlas-home-topdown submit-resume` continues from the checkpoint.
+3. After it finishes: `sudo systemctl start ollama; systemctl --user start hk-router`, then rerun steps 4 and 7 here.
+
+## Secret scan
+
+Paths and match kinds only, never the text. Save it on head; do not paste the file anywhere.
+```bash
+make run MOD=atlas-queries ARGS="secret-scan --out $HOME/data/housekeeping/provenance/secret_scan_$(date -u +%F).tsv --apply"
+cut -f3 ~/data/housekeeping/provenance/secret_scan_$(date -u +%F).tsv | tr ',' '\n' | sort | uniq -c
+```
+Any real key it finds: rotate it at the provider first, then remove the document from Atlas.
+
 ## How to read it
 
 | You see | It means |
