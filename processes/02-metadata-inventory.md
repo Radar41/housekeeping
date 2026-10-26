@@ -12,6 +12,8 @@ Repeat weekly, or after a sweep. Read-only. Atlas already read every file; this 
 
 Only canonical members of each version chain are listed, so old revisions do not show up twice.
 
+Rows that touch protected material are dropped from every query's output (any `protected/` path segment, or any name in `protected_names.txt`), and the count is printed as "withheld N rows". `pipeline-inventory` returns file text, so it refuses to run until `protected_names.txt` exists. Atlas still indexes everything locally; this only keeps it out of what you paste elsewhere.
+
 ## Steps
 
 1. Load the DSN.

@@ -11,7 +11,7 @@ Nothing here moves or deletes a file. Every tool is a dry run until you add `--a
 | 0 | [Set up this repo](processes/00-setup.md) | one-time | `config.toml`, `ATLAS_DSN`, the protected names file, a passing `make test` |
 | 1 | [Check Atlas provenance](processes/01-provenance-check.md) | one-time, then after any big sweep | per-action counts, the July gap answer, whether moves are tracked apart from edits |
 | 2 | [Build the metadata inventory](processes/02-metadata-inventory.md) | repeat weekly, or after a sweep | every code file with its header text and project tag, and every folder that looks like a pipeline |
-| 3 | [Set up the local coders](processes/03-local-coders.md) | one-time per node | Ollama at 64k context, OpenCode, Codex, Claude Code, Rust, Superset, optional Mission Control |
+| 3 | [Set up the local coders](processes/03-local-coders.md) | one-time per node | Ollama at 64k context, OpenCode, Rust, Superset; Codex, Claude Code, Mission Control optional |
 | 4 | [Start the role router](processes/04-router.md) | one-time, then check health | one endpoint on head that sends `reader` and `coder` work to the right node |
 | 5 | [Rebuild a pipeline as a repo](processes/05-rebuild-pipeline.md) | repeat, one pipeline at a time | a new private GitHub repo in `~/projects` that passes the checker; the original folder untouched |
 | 6 | [Check repos](processes/06-repo-check.md) | repeat after every rebuild, and weekly | PASS or FAIL per repo against `STANDARDS.md` |

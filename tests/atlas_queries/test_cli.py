@@ -60,3 +60,16 @@ def test_connection_is_read_only(pg_dsn):
 
     with pytest.raises(psycopg.errors.ReadOnlySqlTransaction):
         cli.run_query(pg_dsn, "CREATE TABLE atlas.nope (x int)", {})
+
+
+def test_withhold_protected():
+    rows = [(1, "radar-41-0/protected/a.py", "x"), (2, "radar-41-0/proj/a.py", "uses ZZname here"),
+            (3, "radar-41-0/proj/b.py", None), (4, "protected", "")]
+    kept, n = cli.withhold_protected(rows, ["zzname"])
+    assert [r[0] for r in kept] == [3] and n == 3
+
+
+def test_content_query_needs_names_file(tmp_path, monkeypatch, capsys):
+    write_config(tmp_path, monkeypatch, "host=nowhere")
+    assert cli.main(["pipeline-inventory"]) == 2
+    assert "protected names file" in capsys.readouterr().err

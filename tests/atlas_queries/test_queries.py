@@ -2,6 +2,8 @@ import hashlib
 import re
 import uuid
 
+from datetime import datetime, timezone
+
 import pytest
 
 from conftest import SQL_DIR, sql_text
@@ -51,8 +53,8 @@ def test_provenance_check(db):
     assert {r["action"] for r in rows} == {"edit", "move"}
     edit = [r for r in rows if r["action"] == "edit"]
     assert edit[0]["type_total"] == 7
-    assert str(edit[0]["type_first_at"].date()) == "2026-06-02"
-    assert str(edit[0]["type_last_at"].date()) == "2026-08-13"
+    assert str(edit[0]["type_first_at"].astimezone(timezone.utc).date()) == "2026-06-02"
+    assert str(edit[0]["type_last_at"].astimezone(timezone.utc).date()) == "2026-08-13"
     flagged = [r for r in edit if r["gap_in_july_2026"]]
     assert len(flagged) == 1 and str(flagged[0]["week_start"]) == "2026-08-10"
     assert flagged[0]["gap_days"] == 35
@@ -218,4 +220,31 @@ def test_pipeline_dirs(db):
     assert p["markers"] == "job.sbatch,run.sh"
     assert p["projects"] == "forecasting"
     assert p["has_readme"] is True and rows[(1, ".")]["has_readme"] is False
-    assert str(p["newest_mtime"].date()) == "2026-03-01"
+    assert p["newest_mtime"] == datetime(2026, 3, 1, tzinfo=timezone.utc)
+
+
+def test_ingest_runs(db):
+    full = '{"run_id": "r1", "backend": {"model": "m", "dim": 2560, "device": "cuda:0", "endpoint": null}, ' \
+           '"counts": {"indexed": 10, "unchanged": 0, "failed": 1, "chunks": 40, "skipped": 5}}'
+    dead = '{"run_id": "r2", "backend": {"model": "m", "dim": 2560, "device": "cuda:0", "endpoint": null}, ' \
+           '"counts": {"indexed": 0, "failed": 6}}'
+    db.execute("INSERT INTO atlas.atlas_provenance (event_id, actor, action, target_table, occurred_at, payload_jsonb) "
+               "VALUES (%s, 't', 'embed_ingest_run', 'atlas_document', '2026-08-01 00:00+00', %s), "
+               "(%s, 't', 'embed_ingest_run', 'atlas_document', '2026-07-01 00:00+00', %s), "
+               "(%s, 't', 'parity_check', 'parity', '2026-07-02 00:00+00', '{}')",
+               (str(uuid.uuid4()), dead, str(uuid.uuid4()), full, str(uuid.uuid4())))
+    rows = query(db, "ingest_runs.sql")
+    assert [r["run_id"] for r in rows] == ["r1", "r2"]
+    assert rows[0]["indexed"] == 10 and rows[0]["dim"] == "2560" and rows[0]["endpoint"] is None
+    assert rows[1]["indexed"] == 0 and rows[1]["failed"] == 6 and rows[1]["unchanged"] is None
+
+
+def test_secret_scan(db):
+    seed_pipelines(db)
+    fake = "gh" + "p_" + "A" * 36
+    add_chunk(db, 900, 2, 9, "token = " + fake)
+    add_chunk(db, 901, 3, 9, "nothing here")
+    rows = query(db, "secret_scan.sql")
+    got = {r["rel_path"]: r["kinds"] for r in rows}
+    assert got == {"proj/fit.py": "github_token,key_assignment"}
+    assert all("chunk_text" not in r for r in rows)

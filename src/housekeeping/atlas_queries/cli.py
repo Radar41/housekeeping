@@ -23,7 +23,12 @@ QUERIES = {
     "provenance-payload-keys": "provenance_payload_keys.sql",
     "pipeline-inventory": "pipeline_inventory.sql",
     "pipeline-dirs": "pipeline_dirs.sql",
+    "ingest-runs": "ingest_runs.sql",
+    "secret-scan": "secret_scan.sql",
 }
+# Queries that return file text (headers). They refuse to run without the protected names file.
+CONTENT_QUERIES = {"pipeline-inventory"}
+PROTECTED_SEGMENT = re.compile(r"(^|/)protected(/|$)")
 NEEDS_ROOT = {"inbox-three-way"}
 OPTIONAL_ROOT = {"pipeline-inventory", "pipeline-dirs"}  # no --root-id means every root
 READ_ONLY_OPTIONS = "-c default_transaction_read_only=on"
@@ -64,6 +69,28 @@ def run_query(dsn: str, sql: str, params: dict) -> tuple[list[str], list[tuple]]
             return [c.name for c in cur.description], cur.fetchall()
 
 
+def load_names(path: str | None) -> list[str] | None:
+    if not path or not Path(path).is_file():
+        return None
+    lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+    return [n.strip().lower() for n in lines if n.strip()]
+
+
+def withhold_protected(rows: list, names: list[str]) -> tuple[list, int]:
+    """Drop every row with a cell under a protected/ path segment or containing a protected name.
+
+    Output of these queries gets pasted to outside tools, so protected material stays out of it
+    even though Atlas indexes it locally.
+    """
+    kept = []
+    for row in rows:
+        cells = [str(c) for c in row if c is not None]
+        if any(PROTECTED_SEGMENT.search(c) for c in cells) or any(n in c.lower() for c in cells for n in names):
+            continue
+        kept.append(row)
+    return kept, len(rows) - len(kept)
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="hk atlas-queries")
     ap.add_argument("query", choices=sorted(QUERIES))
@@ -86,9 +113,19 @@ def main(argv: list[str]) -> int:
         print(f"error: {args.query} needs --root-id", file=sys.stderr)
         return 2
 
+    names_file = cfg.get("checker", {}).get("protected_names_file")
+    names = load_names(names_file)
+    if names is None and args.query in CONTENT_QUERIES:
+        print(f"error: {args.query} returns file text and needs the protected names file ({names_file}); "
+              "see processes/00-setup.md step 5", file=sys.stderr)
+        return 2
+
     sql = load_sql(args.query)
     params = {"root_id": args.root_id} if args.query in NEEDS_ROOT | OPTIONAL_ROOT else {}
     columns, rows = run_query(dsn, sql, params)
+    rows, withheld = withhold_protected(rows, names or [])
+    if withheld:
+        print(f"withheld {withheld} rows that touch protected material", file=sys.stderr)
     text = render(columns, rows, fmt)
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     sql_name = QUERIES[args.query]

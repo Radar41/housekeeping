@@ -6,22 +6,33 @@ One-time on head, then a health check whenever something looks wrong. The router
 
 1. Point each role at a node's Ollama in `config.toml`. Use the models `ollama list` shows on that node (process 3, step 4).
    ```toml
-   [router.roles.reader]
-   url = "http://127.0.0.1:11434"
+   [router]
+   host = "127.0.0.1"
+   port = 8000
+   log = "logs/router.tsv"
+   health_interval_s = 10
+   health_timeout_s = 3
+
+   [router.roles.coder]              # node-a, RTX 5070 12 GB, 64k context
+   url = "http://10.10.1.2:11434"
+   model = "qwen3.5:9b"
+   timeout_s = 300
+
+   [router.roles.reader]             # node-b, RTX 5070 12 GB, 64k context
+   url = "http://10.10.2.2:11434"
    model = "qwen3.5:9b"
    timeout_s = 120
 
-   [router.roles.coder]
-   url = "http://10.10.1.2:11434"
-   model = "deepseek-coder-v2:lite"
-   timeout_s = 300
-
-   [router.roles.embedder]
-   url = "http://127.0.0.1:11434"     # or wherever Qwen3-Embedding-4B is served for Atlas
-   model = "qwen3-embedding:4b"
+   [router.roles.embedder]           # parked: nothing serves this yet (see below)
+   url = "http://127.0.0.1:8101"
+   model = "qwen3-embedding-4b"
    timeout_s = 30
    ```
+   This is the working radar-41 layout (verified 2026-10-26): the workers serve the router, and head's GPU (131k context) stays free for your own OpenCode sessions. Keep `[router.overflow_inflight]` and `[router.andromeda]` from the example.
    Set `[router] host = "127.0.0.1"` unless another machine must reach it.
+
+   Atlas does not serve its embedder. Its ingest loads Qwen3-Embedding-4B in-process with sentence-transformers (`endpoint` is empty in every ingest run, process 1 step 4), so the embedder role stays down until a server for that exact model exists. A down embedder does not affect reader or coder.
+   The embedder must be the same model and precision that made the existing Atlas vectors (Qwen3-Embedding-4B, 2,560 dimensions). Vectors from another model, such as `nomic-embed-text` (768 dimensions), cannot be compared with them. A different quantization of the same model gives close but not identical vectors, so check one known document against its stored vector before using it for new embeddings.
 2. Try it in the foreground first.
    ```bash
    cd ~/projects/housekeeping && uv run hk router serve
@@ -29,8 +40,11 @@ One-time on head, then a health check whenever something looks wrong. The router
    In a second terminal:
    ```bash
    uv run hk router health
-   curl -s localhost:8000/v1/chat/completions -H 'content-type: application/json' \
-     -d '{"model":"coder","messages":[{"role":"user","content":"say ok"}]}'
+   for r in coder reader; do
+     curl -s localhost:8000/v1/chat/completions -H 'content-type: application/json' \
+       -d "{\"model\":\"$r\",\"messages\":[{\"role\":\"user\",\"content\":\"say ok\"}]}" | head -c 300; echo
+   done
+   tail -3 logs/router.tsv
    ```
    Stop it with Ctrl-C.
 3. Run it as a user service so it survives logout and reboot.
