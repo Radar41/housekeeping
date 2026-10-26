@@ -4,7 +4,7 @@
 28: *   /api/runs                 live squeue view merged with log heartbeats
 29- *   /api/edge-feed?...        curvature commit feed (updated_at cursor)
 30- *   /api/chains?... /api/chain?chain_id=   version chains / one chain
-31- *   POST /api/run-control     THE ONLY MUTATING ENDPOINT — whitelisted argv
+31- *   POST /api/run-control     THE ONLY MUTATING ENDPOINT: whitelisted argv
 32- *                             (submit legacy|offline / hold / release /
 33- *                             cancel), validated inputs, append-only action
 34- *                             log at _run/instrument/actions.log. Read-only
@@ -86,37 +86,37 @@
 445-      WHERE r.status = 'active' AND r.score > 0 AND e.root_id = 21
 446-    ),
 --
-1406-      byJob[jobId].tasks.push(row);
-1407-    }
-1408-    const runs = Object.values(byJob).map((job) => {
-1409:      const beats = heartbeatsForJob(job.job_id);
-1410-      return {
-1411-        ...job,
-1412-        tasks: job.tasks.map((t) => ({
-1413-          ...t,
-1414:          heartbeat: beats[t.array_task] ?? beats["0"] ?? null,
-1415-        })),
-1416-      };
-1417-    });
-1418-    return json(res, 200, {
-1419-      squeue_ok: snapshot.ok,
-1420-      squeue_method: "-o parse (pipe-delimited; --json not assumed on this SLURM)",
-1421-      error: snapshot.ok ? undefined : snapshot.error,
-1422-      runs,
-1423-    });
-1424-  }
-1425-
-1426-  if (p === "/api/edge-feed") {
-1427-    const sinceTs = q.get("since_ts") || "1970-01-01T00:00:00Z";
-1428-    const sinceId = intParam(q.get("since_id"), 0, 0, 9_007_199_254_740_000);
-1429-    const limit = intParam(q.get("limit"), 200, 1, 1000);
-1430-    const project = q.get("project");
-1431-    const prefix = q.get("prefix");
-1432-    const canonicalOnly = q.get("canonical_only") === "1";
-1433-    const crossOnly = q.get("cross_prefix_only") === "1";
-1434-    const params = [sinceTs, sinceId];
-1435-    let filters = "";
-1436-    if (canonicalOnly) {
-1437-      filters += ` AND (da.version_status IS NULL OR da.version_status = 'canonical')
-1438-                   AND (db.version_status IS NULL OR db.version_status = 'canonical')`;
-1439-    }
+1440-      byJob[jobId].tasks.push(row);
+1441-    }
+1442-    const runs = Object.values(byJob).map((job) => {
+1443:      const beats = heartbeatsForJob(job.job_id);
+1444-      return {
+1445-        ...job,
+1446-        tasks: job.tasks.map((t) => ({
+1447-          ...t,
+1448:          heartbeat: beats[t.array_task] ?? beats["0"] ?? null,
+1449-        })),
+1450-      };
+1451-    });
+1452-    return json(res, 200, {
+1453-      squeue_ok: snapshot.ok,
+1454-      squeue_method: "-o parse (pipe-delimited; --json not assumed on this SLURM)",
+1455-      error: snapshot.ok ? undefined : snapshot.error,
+1456-      runs,
+1457-    });
+1458-  }
+1459-
+1460-  if (p === "/api/edge-feed") {
+1461-    const sinceTs = q.get("since_ts") || "1970-01-01T00:00:00Z";
+1462-    const sinceId = intParam(q.get("since_id"), 0, 0, 9_007_199_254_740_000);
+1463-    const limit = intParam(q.get("limit"), 200, 1, 1000);
+1464-    const project = q.get("project");
+1465-    const prefix = q.get("prefix");
+1466-    const canonicalOnly = q.get("canonical_only") === "1";
+1467-    const crossOnly = q.get("cross_prefix_only") === "1";
+1468-    const params = [sinceTs, sinceId];
+1469-    let filters = "";
+1470-    if (canonicalOnly) {
+1471-      filters += ` AND (da.version_status IS NULL OR da.version_status = 'canonical')
+1472-                   AND (db.version_status IS NULL OR db.version_status = 'canonical')`;
+1473-    }

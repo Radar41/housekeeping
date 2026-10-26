@@ -1,4 +1,4 @@
-"""validator_heartbeat.py — per-rank telemetry for run_validator_server.mjs
+"""validator_heartbeat.py: per-rank telemetry for run_validator_server.mjs
 
 Stdlib only. Every call is fire-and-forget with a short timeout and a blanket
 except: monitoring must never kill the pipeline.

@@ -6,7 +6,7 @@
 SELECT rel.project,
        string_agg(DISTINCT concat_ws('/', rtrim(r.root_path, '/'), substring(d.rel_path from '^(.*)/[^/]*$')),
                   ' | ' ORDER BY concat_ws('/', rtrim(r.root_path, '/'), substring(d.rel_path from '^(.*)/[^/]*$'))) AS directories,
-       max(d.mtime)::date AS newest_revision,
+       (max(d.mtime) AT TIME ZONE 'UTC')::date AS newest_revision,
        COALESCE(bool_or(d.rel_path ~ '(^|/)\.git(/|$)'), false) AS has_git,
        COALESCE(bool_or(lower(regexp_replace(d.rel_path, '^.*/', '')) ~ '^readme(\.|$)'), false) AS has_readme,
        count(DISTINCT d.document_id) AS document_count,
