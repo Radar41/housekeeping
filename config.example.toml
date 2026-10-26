@@ -56,3 +56,26 @@ timeout_s = 300
 url = "http://andromeda:8000"
 roles_allowed = ["reader", "coder"]
 enabled = false
+
+# Optional. Holds a reader/coder request until hk sched reports that role's GPU free
+# (processes/09-scheduler.md). Leave the table out, or enabled = false, to forward at once.
+[router.gate]
+enabled = true
+state_file = "/home/radar-41-0/data/housekeeping/sched/state.json"
+wait_s = 180        # longest a request waits for an embedding job to leave the GPU
+stale_s = 60        # state older than this means hk sched is down: forward without waiting
+poll_s = 1
+
+[sched]
+router_url = "http://127.0.0.1:8000"
+state_file = "/home/radar-41-0/data/housekeeping/sched/state.json"
+claims_file = "/home/radar-41-0/data/housekeeping/sched/claims.json"
+log = "logs/sched.tsv"
+tick_s = 5
+idle_release_s = 900          # embedding resumes after this long with no requests for the role
+embed_job_prefix = "atlas-fo" # job name prefix of the Atlas embedding slices (squeue -o '%i %j')
+unload_before_release = true  # unload the node's Ollama models before embedding takes the GPU back
+
+[sched.nodes]                 # role -> Slurm node its Ollama shares a GPU with
+coder = "node-a"
+reader = "node-b"

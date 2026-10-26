@@ -50,6 +50,38 @@ class Router:
         self.andromeda_health = Health()
         self.inflight = {r: 0 for r in ROLES}  # local requests in flight
         self.inflight_andromeda = {r: 0 for r in ROLES}
+        self.waiting = {r: 0 for r in ROLES}  # requests held at the GPU gate
+        self.last_used = {r: None for r in ROLES}  # monotonic time of the last request start or end
+
+    def _touch(self, role: str) -> None:
+        self.last_used[role] = time.monotonic()
+
+    async def gate(self, role: str, rid: str) -> None:
+        """Wait until the scheduler reports this role's GPU free. Never blocks forever:
+        no state file, a stale one (scheduler down), or wait_s elapsed all let the request through."""
+        g = self.s.gate
+        if not g.enabled or role not in CHAT_ROLES:
+            return
+        self.waiting[role] += 1
+        t0 = time.perf_counter()
+        try:
+            while True:
+                st = _read_gate_state(g.state_file)
+                if st is None or time.time() - float(st.get("ts", 0)) > g.stale_s:
+                    if time.perf_counter() - t0 >= g.poll_s:  # only worth a line if we had waited
+                        self._log("gate_stale", role, "-", rid, t0)
+                    return
+                r = st.get("roles", {}).get(role)
+                if r is None or r.get("ready", True):
+                    if time.perf_counter() - t0 >= g.poll_s:
+                        self._log("gate_waited", role, "-", rid, t0)
+                    return
+                if time.perf_counter() - t0 >= g.wait_s:
+                    self._log("gate_timeout", role, "-", rid, t0)
+                    return
+                await asyncio.sleep(g.poll_s)
+        finally:
+            self.waiting[role] -= 1
 
     # routing
 
@@ -72,6 +104,8 @@ class Router:
 
     async def forward(self, role: str, path: str, body: dict, rid: str):
         """Returns a StreamingResponse passing the upstream reply through, or a JSONResponse error."""
+        self._touch(role)
+        await self.gate(role, rid)
         for _ in range(2):  # second pass only if andromeda failed to connect and local can serve
             try:
                 t = self.decide(role)
@@ -118,6 +152,7 @@ class Router:
         finally:
             await resp.aclose()
             counter[role] -= 1
+            self._touch(role)
             self._log("route", role, t.url, rid, t0)
 
     def _log(self, action, role, url, rid, t0):
@@ -158,7 +193,10 @@ class Router:
                 target = self.decide(r).url
             except RoleDown:
                 target = self.s.roles[r].url
-            roles[r] = {"up": h.up, "latency_ms": h.latency_ms, "inflight": self.inflight[r], "target": target}
+            used = self.last_used[r]
+            idle = None if used is None else round(time.monotonic() - used, 1)
+            roles[r] = {"up": h.up, "latency_ms": h.latency_ms, "inflight": self.inflight[r],
+                        "waiting": self.waiting[r], "idle_s": idle, "target": target}
         a = self.s.andromeda
         return {
             "ok": all(roles[r]["up"] for r in ROLES),
@@ -170,6 +208,15 @@ class Router:
                 "inflight": dict(self.inflight_andromeda),
             },
         }
+
+
+def _read_gate_state(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return d if isinstance(d, dict) else None
 
 
 def _error(status: int, message: str, role: str | None) -> JSONResponse:
