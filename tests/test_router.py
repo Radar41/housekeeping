@@ -90,6 +90,19 @@ async def test_bad_role_400(world):
 
 
 @pytest.mark.anyio
+async def test_model_name_as_role(world):
+    router, front, ups, _ = world
+    await router.check_all()
+    r = await front.post("/v1/chat/completions", json={"model": "coder", "messages": [], "stream": True})
+    assert r.status_code == 200 and r.text.startswith("data: coder-0")
+    assert ups["coder"].state.seen[0]["model"] == "coder-model"
+    r = await front.post("/v1/chat/completions", json={"model": "embedder", "messages": []})
+    assert r.status_code == 400
+    r = await front.post("/v1/chat/completions", json={"role": "reader", "model": "coder", "messages": []})
+    assert r.json()["served_by"] == "reader"
+
+
+@pytest.mark.anyio
 async def test_stream_passthrough(world):
     router, front, ups, _ = world
     await router.check_all()

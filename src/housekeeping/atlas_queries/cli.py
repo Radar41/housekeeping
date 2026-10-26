@@ -20,8 +20,12 @@ QUERIES = {
     "provenance-check": "provenance_check.sql",
     "inbox-three-way": "inbox_three_way.sql",
     "project-table": "project_table.sql",
+    "provenance-payload-keys": "provenance_payload_keys.sql",
+    "pipeline-inventory": "pipeline_inventory.sql",
+    "pipeline-dirs": "pipeline_dirs.sql",
 }
 NEEDS_ROOT = {"inbox-three-way"}
+OPTIONAL_ROOT = {"pipeline-inventory", "pipeline-dirs"}  # no --root-id means every root
 READ_ONLY_OPTIONS = "-c default_transaction_read_only=on"
 
 
@@ -83,7 +87,7 @@ def main(argv: list[str]) -> int:
         return 2
 
     sql = load_sql(args.query)
-    params = {"root_id": args.root_id} if args.query in NEEDS_ROOT else {}
+    params = {"root_id": args.root_id} if args.query in NEEDS_ROOT | OPTIONAL_ROOT else {}
     columns, rows = run_query(dsn, sql, params)
     text = render(columns, rows, fmt)
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()

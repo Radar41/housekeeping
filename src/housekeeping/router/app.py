@@ -210,6 +210,8 @@ def create_app(router: Router, run_health_loop: bool = True) -> FastAPI:
         if body is None:
             return _error(400, "body must be a JSON object", None)
         role = body.pop("role", None)
+        if role is None and body.get("model") in CHAT_ROLES:
+            role = body["model"]  # OpenCode and other clients that only send a model name
         if role not in CHAT_ROLES:
             return _error(400, f"role must be one of {list(CHAT_ROLES)}", None)
         return await router.forward(role, "/v1/chat/completions", body, _request_id(request))

@@ -154,3 +154,68 @@ def test_project_table(db):
     assert a["has_git"] is True and a["has_readme"] is True and a["decision"] == ""
     b = rows["beta"]
     assert b["has_git"] is False and b["has_readme"] is False and b["document_count"] == 1
+
+
+def add_chunk(db, chunk_id, doc, index, text):
+    db.execute("INSERT INTO atlas.atlas_chunk (chunk_id, document_id, chunk_index, chunk_text, sha256) "
+               "VALUES (%s, %s, %s, %s, %s)", (chunk_id, doc, index, text, sha(text)))
+
+
+def add_tag(db, doc, project, score):
+    db.execute("INSERT INTO atlas.atlas_doc_relevance (document_id, project, score) VALUES (%s, %s, %s)",
+               (doc, project, score))
+
+
+def test_provenance_payload_keys(db):
+    db.execute("INSERT INTO atlas.atlas_provenance (event_id, actor, action, target_table, occurred_at, payload_jsonb) "
+               "VALUES (%s, 't', 'update', 'atlas_document', '2026-07-01 00:00+00', '{\"from_path\": \"a\", \"to_path\": \"b\"}'), "
+               "(%s, 't', 'update', 'atlas_document', '2026-07-02 00:00+00', '{\"sha256\": \"x\"}'), "
+               "(%s, 't', 'ingest', 'atlas_document', '2026-07-03 00:00+00', '{}')",
+               (str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())))
+    rows = query(db, "provenance_payload_keys.sql")
+    got = {(r["action"], r["payload_key"]): r["events"] for r in rows}
+    assert got == {("update", "from_path"): 1, ("update", "to_path"): 1, ("update", "sha256"): 1,
+                   ("ingest", "(empty)"): 1}
+
+
+def seed_pipelines(db):
+    db.execute("INSERT INTO atlas.atlas_root (root_id, root_path) VALUES (1, '/home/u'), (2, '/srv')")
+    add_doc(db, 1, 1, "proj/run.sh", "r", "2026-01-01 00:00+00")
+    add_doc(db, 2, 1, "proj/fit.py", "f", "2026-03-01 00:00+00", "canonical")
+    add_doc(db, 3, 1, "proj/job.sbatch", "j", "2026-02-01 00:00+00")
+    add_doc(db, 4, 1, "proj/README.md", "readme", "2026-02-01 00:00+00")
+    add_doc(db, 5, 1, "proj/old_fit.py", "f0", "2025-01-01 00:00+00", "superseded_by_version")
+    add_doc(db, 6, 1, "notes/todo.txt", "t", "2026-01-01 00:00+00")
+    add_doc(db, 7, 1, "top.py", "top", "2026-01-01 00:00+00")
+    add_doc(db, 8, 2, "x/Cargo.toml", "c", "2026-01-01 00:00+00")
+    add_chunk(db, 1, 2, 0, '"""Fit the model to the residual series."""\nimport numpy')
+    add_chunk(db, 2, 2, 1, "def later(): pass")
+    add_tag(db, 2, "forecasting", 0.9)
+    add_tag(db, 2, "misc", 0.1)
+    add_tag(db, 1, "forecasting", 0.5)
+
+
+def test_pipeline_inventory(db):
+    seed_pipelines(db)
+    rows = {r["rel_path"]: r for r in query(db, "pipeline_inventory.sql", root_id=None)}
+    assert sorted(rows) == ["proj/fit.py", "proj/job.sbatch", "proj/run.sh", "top.py", "x/Cargo.toml"]
+    assert rows["proj/fit.py"]["project"] == "forecasting"
+    assert rows["proj/fit.py"]["header"] == '"""Fit the model to the residual series.""" \\n import numpy'
+    assert rows["proj/run.sh"]["is_marker"] and rows["proj/job.sbatch"]["is_marker"]
+    assert not rows["proj/fit.py"]["is_marker"]
+    assert rows["top.py"]["dir"] == "." and rows["proj/fit.py"]["dir"] == "proj"
+    assert rows["proj/fit.py"]["header"] is not None and rows["top.py"]["header"] is None
+    only1 = query(db, "pipeline_inventory.sql", root_id=2)
+    assert [r["rel_path"] for r in only1] == ["x/Cargo.toml"]
+
+
+def test_pipeline_dirs(db):
+    seed_pipelines(db)
+    rows = {(r["root_id"], r["dir"]): r for r in query(db, "pipeline_dirs.sql", root_id=None)}
+    assert sorted(rows) == [(1, "."), (1, "proj"), (2, "x")]
+    p = rows[(1, "proj")]
+    assert p["code_files"] == 3 and p["marker_files"] == 2
+    assert p["markers"] == "job.sbatch,run.sh"
+    assert p["projects"] == "forecasting"
+    assert p["has_readme"] is True and rows[(1, ".")]["has_readme"] is False
+    assert str(p["newest_mtime"].date()) == "2026-03-01"
