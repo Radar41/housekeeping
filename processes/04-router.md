@@ -22,6 +22,8 @@ One-time on head, then a health check whenever something looks wrong. The router
    timeout_s = 30
    ```
    Set `[router] host = "127.0.0.1"` unless another machine must reach it.
+
+   The embedder must be the same model and precision that made the existing Atlas vectors (Qwen3-Embedding-4B, 2,560 dimensions). Vectors from another model, such as `nomic-embed-text` (768 dimensions), cannot be compared with them. A different quantization of the same model gives close but not identical vectors, so check one known document against its stored vector before using it for new embeddings.
 2. Try it in the foreground first.
    ```bash
    cd ~/projects/housekeeping && uv run hk router serve
