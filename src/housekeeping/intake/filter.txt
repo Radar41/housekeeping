@@ -1,0 +1,11 @@
+# rclone filter for the Windows migration. First match wins.
+# Leading slash anchors a rule at the source root; others match at any depth.
+- pagefile.sys
+- hiberfil.sys
+- swapfile.sys
+- System Volume Information/**
+- $Recycle.Bin/**
+- /Windows/**
+- /Program Files*/**
+- /ProgramData/**
+- AppData/Local/Temp/**
