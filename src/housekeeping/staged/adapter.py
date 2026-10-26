@@ -179,7 +179,7 @@ class Atlas:
             inspect.signature(getattr(self.m, name)).bind(*([None] * count))
 
     def writer_values(self, cur, column, chunk_id, vector, document_id, chunk_text):
-        return dict(cur=cur, column=column, chunk_id=chunk_id, values=vector, vector=vector,
+        return dict(cur=cur, column=column, chunk_id=chunk_id, values=vector, vector=vector, vec=vector,
                     embedding=vector, cfg=self.cfg, config=self.cfg, document_id=document_id,
                     chunk_text=chunk_text, model=self.cfg.model)
 

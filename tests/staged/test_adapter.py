@@ -93,6 +93,26 @@ def test_native_writer_contract_matches_history_seven_argument_upsert():
         a.writer_check()
 
 
+def test_installed_vec_signature_validates_and_receives_exact_arguments():
+    a = fake_adapter()
+    a.cfg.model = "fixture"
+    calls = []
+    a.m.upsert_document = lambda cur, root_id, rel, path, digest, status, lineage_enabled: None
+    a.m.insert_chunk = lambda cur, document_id, chunk_index, chunk_text, metadata, metadata_enabled: None
+
+    def insert_embedding(cur, column, chunk_id, cfg, vec):
+        calls.append((cur, column, chunk_id, cfg, vec))
+
+    a.m.insert_embedding = insert_embedding
+    a.writer_check()
+    assert calls == []  # compatibility validation must not perform writes
+    cursor = object()
+    vector = [0.0, 1.0]
+    a.write_embedding(cursor, "embedding", 42, vector, 17, "fixture text")
+    assert calls == [(cursor, "embedding", 42, a.cfg, vector)]
+    assert calls[0][-1] is vector
+
+
 def test_stage_specific_drain_does_not_hold_gpus_for_publisher():
     status = {"directory": [{"state": "done"}],
               "file": [{"state": "prepared"}], "vector": [{"state": "done"}]}
