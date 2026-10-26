@@ -23,10 +23,23 @@ STAGE="${STAGES[$SLURM_ARRAY_TASK_ID]}"
 MARK_DIR="logs/.stages-${SLURM_ARRAY_JOB_ID}"
 mkdir -p "$MARK_DIR"
 
-# HEARTBEAT INTERFACE (UNVERIFIED, adjust only this function):
-# Assumed call: <script> --run-id ID --state running|ok|failed
+# HEARTBEAT (matches heartbeat/validator_heartbeat.py and the /api/runs reader):
+# 1. /api/runs reads the last JSON line containing "seen" from <log root>/<dir>/<name>-<jobid>-<task>.log
+#    and takes age_sec from that file's mtime, so each call appends one line to such a file.
+# 2. ValidatorHeartbeat(job_id, rank): announce() on the first call, beat(force=True) after.
+#    It has no state field; running/ok/failed travel only in the log line.
 hb() {
-  uv run python "{{heartbeat_script}}" --run-id "${SLURM_JOB_NAME}-${STAGE}-${SLURM_JOB_ID}" --state "$1" || true
+  local state="$1" first=0 root f n
+  root="${SLURM_LOG_ROOT:-{{repo_dir}}/_run/slurm}"
+  f="$root/${SLURM_JOB_NAME}/${SLURM_JOB_NAME}-${SLURM_ARRAY_JOB_ID}-${SLURM_ARRAY_TASK_ID}.log"
+  mkdir -p "$(dirname "$f")" 2>/dev/null || return 0
+  [ -e "$f" ] || first=1
+  n=$(cat "$f" 2>/dev/null | wc -l)
+  printf '{"seen": %s, "state": "%s", "stage": "%s", "ts": %s}\n' "$((n + 1))" "$state" "$STAGE" "$(date +%s)" >> "$f" || true
+  PYTHONPATH="$(dirname "{{heartbeat_script}}")" python3 -c 'import os, sys
+from validator_heartbeat import ValidatorHeartbeat
+h = ValidatorHeartbeat(job_id=os.environ["SLURM_JOB_ID"], rank=int(os.environ.get("SLURM_PROCID", "0")))
+h.announce() if sys.argv[1] == "1" else h.beat(force=True)' "$first" 2>/dev/null || true
 }
 
 beat_loop() {
