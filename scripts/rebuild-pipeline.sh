@@ -154,8 +154,10 @@ trap - ERR
 printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$NOW" "$NAME" "$SRC" "$DST" "$COUNT" "$COMMIT" >> "$DATA/rebuilds.tsv"
 echo "copied $COUNT files, commit $COMMIT, logged to $DATA/rebuilds.tsv"
 echo
-echo "checker:"
-(cd "$HK" && uv run -q hk checker "$DST") || true
+if [ -z "${HK_SKIP_CHECKER:-}" ]; then        # hk rebuild-all runs the checker itself after the README
+  echo "checker:"
+  (cd "$HK" && uv run -q hk checker "$DST") || true
+fi
 echo
 echo "next: fix any FAIL above, edit README.md, then push:"
 echo "  gh repo create Radar41/$NAME --private --source $DST --push"

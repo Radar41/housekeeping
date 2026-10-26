@@ -20,6 +20,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -60,20 +61,29 @@ def keep_file(rel: str) -> bool:
     return base in KEEP_NAMES or (("." in base) and base.rsplit(".", 1)[-1].lower() in KEEP_EXT)
 
 
-def listing(src: str, rules: list[str]) -> list[tuple[int, str]]:
-    """What rebuild-pipeline.sh would copy: same base rules and size cap, plus `rules`."""
+HIDE = re.compile(r"^\[sender\] hiding (file|directory) (.+) because of pattern (.+)$")
+
+
+def listing(src: str, rules: list[str], why: bool = False):
+    """What rebuild-pipeline.sh would copy: same base rules and size cap, plus `rules`.
+    With why=True also returns {pattern: [hidden paths]} from the same single rsync pass."""
     cmd = ["rsync", "-an", "--prune-empty-dirs", f"--max-size={MAX_SIZE}", f"--exclude-from={BASE_EXCLUDE}"]
+    cmd += ["-vv"] if why else []
     cmd += [f"--exclude={r}" for r in rules]
     cmd += ["--out-format=%l\t%n", src.rstrip("/") + "/", "/nonexistent-hk-dry-run/"]
     out = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
     if out.returncode not in (0, 23, 24):          # 23/24: some files unreadable or vanished
         raise RuntimeError(f"rsync exit {out.returncode}")
-    rows = []
+    rows, hidden = [], {}
     for line in out.stdout.splitlines():
+        if why and (m := HIDE.match(line)):
+            kind, path, pat = m.groups()
+            hidden.setdefault(pat, []).append(path + ("/" if kind == "directory" else ""))
+            continue
         size, _, rel = line.partition("\t")
         if rel and not rel.endswith("/") and size.isdigit():
             rows.append((int(size), rel))
-    return rows
+    return (rows, hidden) if why else rows
 
 
 def summarize(files, depth=2, top=40):
@@ -127,29 +137,48 @@ def clean_rule(p: str) -> str | None:
 
 def validate(src, files, rules, prior=()):
     """Keep a rule only if it removes something and drops no code, config or doc file.
-    files is the listing with the prior rules already applied."""
-    base_keep = {rel for _, rel in files if keep_file(rel)}
-    accepted, rejected = [], []
-    for source, rule in rules:
-        after = listing(src, [r for _, r in prior] + [r for _, r in accepted] + [rule])
-        kept = {rel for _, rel in after}
-        lost = base_keep - kept
-        removed = len(files) - len(after)
-        if lost:
-            rejected.append((source, rule, f"would drop {len(lost)} code/doc files"))
-        elif removed <= 0 and source == "model":
-            rejected.append((source, rule, "matches nothing"))
-        elif removed > 0:
-            accepted.append((source, rule))
-            files = after
-    return accepted, rejected, files
+    files is the listing with the prior rules already applied. One rsync pass reports which rule
+    hid which path; offending rules are dropped and the pass repeats (usually once or twice),
+    since a file hidden by a dropped rule may still match a later one."""
+    prior = [r for _, r in prior]
+    names = {f for _, f in files}
+    keep = {f for f in names if keep_file(f)}
+    live, rejected = list(rules), []
+    for _ in range(10):
+        after, hidden = listing(src, prior + [r for _, r in live], why=True)
+        by_path = {p: pat for pat, ps in hidden.items() for p in ps}
+        gone_by = {}
+        for f in names:                            # the rule that hid f: its own path or its nearest folder
+            parts = f.split("/")
+            for path in [f] + ["/".join(parts[:i]) + "/" for i in range(len(parts) - 1, 0, -1)]:
+                if path in by_path:
+                    gone_by.setdefault(by_path[path], set()).add(f)
+                    break
+        bad, accepted, unused = [], [], []
+        for source, rule in live:
+            gone = gone_by.get(rule, set())
+            if gone & keep:
+                lost = sorted(gone & keep)
+                bad.append((source, rule, f"would drop {len(lost)} code/doc files, e.g. {lost[0]}"))
+            elif gone:
+                accepted.append((source, rule))
+            elif source == "model":
+                unused.append((source, rule, "matches nothing"))
+        if not bad:                               # unused rules hid nothing, so `after` is already right
+            return accepted, rejected + unused, after
+        rejected += bad
+        drop = {(s_, r_) for s_, r_, _ in bad}
+        live = [x for x in live if x not in drop]
+    return accepted, rejected, listing(src, prior + [r for _, r in accepted])
 
 
 # ---------- local model through the router ----------
 
 def ask(router, role, prompt, timeout=600):
     import httpx
-    body = {"model": role, "stream": False, "messages": [{"role": "user", "content": prompt}]}
+    # reasoning_effort none: Ollama turns thinking on by default for qwen3.5 on /v1, which costs minutes per call
+    body = {"model": role, "stream": False, "reasoning_effort": "none", "max_tokens": 800,
+            "messages": [{"role": "user", "content": prompt}]}
     r = httpx.post(router.rstrip("/") + "/v1/chat/completions", json=body, timeout=timeout)
     r.raise_for_status()
     text = r.json()["choices"][0]["message"]["content"] or ""
@@ -264,11 +293,14 @@ def process(run: Path, c: dict, apply: bool, router: str, role: str, limits: dic
         return rec
     if not Path(src).is_dir():
         return {**rec, "status": "no_code", "note": "source folder missing"}
+    t = time.monotonic()
     base = listing(src, [])
     rec["files_before"] = len(base)
     rules = [("default", r) for r in default_rules()] + [("bulk", r) for r in bulk_dirs(base)]
     accepted, rejected, files = validate(src, base, rules)
     folders, types = summarize(files)
+    rec["t_rules"] = round(time.monotonic() - t, 1)
+    t = time.monotonic()
     try:
         proposed = model_rules(router, role, folders, types) if files else []
         rec["model"] = "ok"
@@ -276,6 +308,7 @@ def process(run: Path, c: dict, apply: bool, router: str, role: str, limits: dic
         proposed, rec["model"] = [], f"unavailable ({type(e).__name__})"
     more, rej2, files = validate(src, files, [("model", r) for r in proposed if r not in {x for _, x in accepted}],
                               prior=accepted)
+    rec["t_model_rules"] = round(time.monotonic() - t, 1)
     accepted += more
     rejected += rej2
     keep = sum(1 for _, rel in files if keep_file(rel))
@@ -294,8 +327,11 @@ def process(run: Path, c: dict, apply: bool, router: str, role: str, limits: dic
         return {**rec, "status": "too_big"}
     if not apply:
         return {**rec, "status": "planned"}
+    t = time.monotonic()
     r = subprocess.run(["bash", str(SCRIPT), src, name, "--exclude-from", str(excl), "--apply"],
-                       capture_output=True, text=True, errors="replace", cwd=HK)
+                       capture_output=True, text=True, errors="replace", cwd=HK,
+                       env={**os.environ, "HK_SKIP_CHECKER": "1"})
+    rec["t_build"] = round(time.monotonic() - t, 1)
     if r.returncode != 0 or not (dst / ".git").exists():
         tail = (r.stderr or r.stdout).strip().splitlines()[-3:]
         status = "refused" if any("protected" in t or "refusing" in t for t in tail) else "rebuild_failed"
@@ -305,11 +341,13 @@ def process(run: Path, c: dict, apply: bool, router: str, role: str, limits: dic
         recent = datetime.fromisoformat(newest) > datetime.now(timezone.utc) - timedelta(days=90)
     except ValueError:
         recent = False
+    t = time.monotonic()
     try:
         what = draft_readme(router, role, dst, types)
         rec["readme"] = "drafted"
     except Exception as e:
         what, rec["readme"] = None, f"todo ({type(e).__name__})"
+    rec["t_readme"] = round(time.monotonic() - t, 1)
     set_readme(dst, what, "partial" if recent else "parked")
     subprocess.run(["git", "-C", str(dst), "add", "README.md"], check=True)
     subprocess.run(["git", "-C", str(dst), "commit", "-q", "-m", "README: what it is, state",
@@ -356,13 +394,13 @@ def cmd_run(a):
     finished, waiting = len(cands) - len(todo), len(todo)
     todo = todo[:a.limit] if a.limit else todo
     roles = [r for r in a.roles.split(",") if r]
-    print(f"{len(cands)} candidates: {finished} finished, {waiting} waiting, {len(todo)} this run; roles {roles}; "
+    print(f"{len(cands)} candidates: {finished} finished, {waiting} waiting, {len(todo)} this run; roles {roles} x {a.jobs} jobs; "
           f"{'APPLY: builds local repos, pushes nothing' if a.apply else 'dry run: rules and sizes only'}", flush=True)
     limits = {"files": a.max_files, "mb": a.max_mb}
     stop = threading.Event()
 
     def worker(i):
-        role = roles[i % len(roles)]
+        role = roles[i % len(roles)]       # workers alternate roles, so each node gets a.jobs at a time
         n = 0
         while not stop.is_set():
             with LOCK:
@@ -375,15 +413,18 @@ def cmd_run(a):
                 rec = {"name": c["name"], "source": c["source"], "status": "error", "note": f"{type(e).__name__}: {e}"[:300]}
             record(run, rec)
             n += 1
-            print(json.dumps({k: rec.get(k) for k in ("name", "status", "files", "mb", "code", "model", "readme")}), flush=True)
+            print(json.dumps({k: rec.get(k) for k in ("name", "status", "files", "mb", "code", "model", "readme",
+                                                     "t_rules", "t_model_rules", "t_build", "t_readme")
+                              if rec.get(k) is not None}), flush=True)
             if n % 5 == 0:
                 with LOCK:
                     write_report(run)
         return n
 
     try:
-        with ThreadPoolExecutor(len(roles)) as ex:
-            list(ex.map(worker, range(len(roles))))
+        n_workers = len(roles) * a.jobs
+        with ThreadPoolExecutor(n_workers) as ex:
+            list(ex.map(worker, range(n_workers)))
     except KeyboardInterrupt:
         stop.set()
     write_report(run)
@@ -479,7 +520,9 @@ def parser():
     ru.add_argument("--apply", action="store_true")
     ru.add_argument("--limit", type=int, default=0)
     ru.add_argument("--only", nargs="*")
-    ru.add_argument("--roles", default="reader,coder", help="one worker per role, comma separated")
+    ru.add_argument("--roles", default="reader,coder", help="comma separated; work is spread across them")
+    ru.add_argument("--jobs", type=int, default=3,
+                    help="candidates in flight per role; rsync and git overlap the model calls")
     ru.add_argument("--router", default=os.environ.get("HK_ROUTER", "http://127.0.0.1:8000"))
     ru.add_argument("--max-files", type=int, default=3000)
     ru.add_argument("--max-mb", type=float, default=150)
