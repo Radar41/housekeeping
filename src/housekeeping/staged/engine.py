@@ -280,12 +280,19 @@ class Pipeline:
             if payload is None:
                 self._file_state(c, rid, rel, "skip", reason, elapsed=time.monotonic() - t)
                 return True
-            for key, text in sorted(dict(zip(payload["keys"], payload["texts"])).items()):
-                c.execute("""INSERT INTO hk_stage.vector(run_id,text_sha,text_body) VALUES(%s,%s,%s)
-                             ON CONFLICT DO NOTHING""", (rid, key, text))
-            # Text stored once per unique chunk; document keeps ordered keys and metadata.
-            del payload["texts"]
-            self._file_state(c, rid, rel, "prepared", payload=payload, elapsed=time.monotonic() - t)
+            texts = dict(zip(payload["keys"], payload.pop("texts")))
+            try:
+                # Savepoint: text PostgreSQL rejects (NUL bytes, invalid encodings in text or
+                # JSON metadata) marks this one file and the worker continues.
+                with c.transaction():
+                    for key, text in sorted(texts.items()):
+                        c.execute("""INSERT INTO hk_stage.vector(run_id,text_sha,text_body) VALUES(%s,%s,%s)
+                                     ON CONFLICT DO NOTHING""", (rid, key, text))
+                    # Text stored once per unique chunk; document keeps ordered keys and metadata.
+                    self._file_state(c, rid, rel, "prepared", payload=payload, elapsed=time.monotonic() - t)
+            except psycopg.DataError as e:
+                self._file_state(c, rid, rel, "error", "db_" + type(e).__name__, elapsed=time.monotonic() - t)
+                return True
             self.event(c, rid, "prepare", len(payload["keys"]), time.monotonic() - t)
             return True
 

@@ -396,3 +396,29 @@ def test_init_without_schema_create_privilege_then_admin_precreated_schema(db, s
         c.execute("REVOKE ALL ON SCHEMA atlas FROM hk_limited")
         c.execute(f'REVOKE ALL ON DATABASE "{dbname}" FROM hk_limited')
         c.execute("DROP ROLE hk_limited")
+
+
+def test_text_postgres_rejects_marks_file_and_worker_continues(db):
+    p, rid, a, root = pipeline(db)
+    (root / "a_nul.txt").write_bytes(b"bad\x00byte")
+    (root / "b_meta.txt").write_text("fine text")
+    (root / "c_ok.txt").write_text("ok")
+    original = a.prepare
+
+    def prepare(path, rel, st, contract):
+        payload, reason = original(path, rel, st, contract)
+        if rel == "b_meta.txt":
+            payload["metadata"] = {"x": "nul\u0000in-json"}
+        return payload, reason
+    a.prepare = prepare
+    drain(p.scan_one, rid)
+    p.plan(rid)
+    p.pause(rid, False)
+    assert drain(p.prepare_one, rid) == 3
+    assert counts(p, rid) == {"error": 2, "prepared": 1}
+    with p.connection() as c:
+        rows = c.execute("SELECT rel,reason FROM hk_stage.file WHERE run_id=%s AND state='error' ORDER BY rel",
+                         (rid,)).fetchall()
+        assert [r["rel"] for r in rows] == ["a_nul.txt", "b_meta.txt"]
+        assert all(r["reason"].startswith("db_") for r in rows)
+        assert c.execute("SELECT count(*) n FROM hk_stage.vector WHERE run_id=%s", (rid,)).fetchone()["n"] == 1
