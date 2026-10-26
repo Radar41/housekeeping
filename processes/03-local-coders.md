@@ -88,7 +88,7 @@ Ollama gives a 4,096-token context to any model on a GPU with less than 24 GB, a
          "name": "Ollama (this node)",
          "options": { "baseURL": "http://127.0.0.1:11434/v1" },
          "models": {
-           "qwen3.5:9b": { "name": "Qwen3.5 9B" }
+           "qwen3.5:9b": { "name": "Qwen3.5 9B", "limit": { "context": 131072, "output": 16384 } }
          }
        },
        "housekeeping": {
@@ -96,15 +96,16 @@ Ollama gives a 4,096-token context to any model on a GPU with less than 24 GB, a
          "name": "radar-41 router",
          "options": { "baseURL": "http://localhost:8000/v1" },
          "models": {
-           "coder": { "name": "coder role" },
-           "reader": { "name": "reader role" }
+           "coder":  { "name": "coder role",  "limit": { "context": 65536, "output": 8192 } },
+           "reader": { "name": "reader role", "limit": { "context": 65536, "output": 8192 } }
          }
        }
      }
    }
    ```
+   Set `limit.context` to the node's `OLLAMA_CONTEXT_LENGTH` (head 131072, workers 65536). Without it OpenCode assumes about 256K, never compacts in time, and Ollama silently drops the oldest context. Check: a 7.5K token prompt should show about 6% on head.
    On a worker, change the first `baseURL` to `http://$OLLAMA_HOST/v1` written out (for example `http://10.10.1.2:11434/v1`). Shortcut that writes the Ollama part for you: `ollama launch opencode --config`.
-   Test: `cd ~/projects/housekeeping && opencode`, pick `ollama/qwen3.5:9b`, ask it to list the files in `processes/`.
+   Test: `cd ~/projects/housekeeping && opencode`, pick `ollama/qwen3.5:9b`, ask it to list the files in `processes/`. Then `/models`, pick `housekeeping/coder`, ask again; `tail -3 logs/router.tsv` should show a coder line.
 7. Codex CLI with Ollama ([Ollama Codex guide](https://docs.ollama.com/integrations/codex)). Needs Node.js; Codex talks to Ollama directly, not through the router.
    ```bash
    npm install -g @openai/codex
