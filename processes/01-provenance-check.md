@@ -25,7 +25,14 @@ Run once now, before anything else builds on Atlas. Run again after any large sw
    LAST="2026-08-11 16:34"     # last ingest from step 4
    find "$HOME" -xdev -type f -newermt "$LAST" -not -path '*/.*' 2>/dev/null | wc -l
    ```
-6. Save all three with today's date so the next run can be compared.
+6. Check that the ingest timer actually succeeds. A timer that fires but fails writes nothing to Atlas, so steps 2 to 4 only show it as silence.
+   ```bash
+   systemctl --user list-timers --all --no-pager | grep -iE 'atlas|ingest|parity'
+   systemctl --user show atlas-vector-ingest.service -p Result -p ExecMainStatus -p ExecMainExitTimestamp
+   journalctl --user -u atlas-vector-ingest.service -n 5 --no-pager
+   ```
+   `Result=success` is healthy. Anything else: read the journal line before changing anything.
+7. Save all three with today's date so the next run can be compared.
    ```bash
    mkdir -p ~/data/housekeeping/provenance
    D=$(date -u +%F); P=$HOME/data/housekeeping/provenance
@@ -45,10 +52,11 @@ Run once now, before anything else builds on Atlas. Run again after any large sw
 | an ingest run with `unchanged` near the document count | incremental run; files changed during an earlier gap were picked up here |
 | an ingest run with `indexed = 0` and `failed > 0` | the run started and did nothing |
 | `endpoint` empty, `kind = sentence_transformers` | Atlas embeds in-process; there is no embedding server for the router to call |
+| `Result=exit-code`, `status=3`, "internal wrapper" in the journal | the timer calls the old ingest entry point, which now refuses direct starts; nothing has been ingested since the last manual run |
 | many files in step 5 | the inventory in process 2 misses them until the next ingest |
 
-Result on radar-41, 2026-10-26: July gap real (no ingest Jul 14 to Jul 30, two failed runs Jul 31, parity at about a third of its hourly rate); covered content-wise by the incremental run on Aug 11 (6,082 indexed, 208,634 unchanged); moves not tracked; last ingest Aug 11.
+Result on radar-41, 2026-10-26: July gap real (no ingest Jul 14 to Jul 30, two failed runs Jul 31, parity at about a third of its hourly rate); covered content-wise by the incremental run on Aug 11 (6,082 indexed, 208,634 unchanged); moves not tracked; last ingest Aug 11. Cause: `atlas-vector-ingest.timer` has exited with status 3 every 15 minutes since then ("internal wrapper, use ./bin/atlas-epoch-ingest"). 919,309 files in home are newer than the last ingest.
 
 ## Done when
 
-The three files from step 6 exist and you have written the three answers (July gap, moves tracked, last event date) at the top of `~/data/housekeeping/provenance/NOTES.md`.
+The three files from step 7 exist and you have written the three answers (July gap, moves tracked, last event date) at the top of `~/data/housekeeping/provenance/NOTES.md`.
