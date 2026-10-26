@@ -108,7 +108,7 @@ def test_plan_run_dry_then_apply_then_push_dry(world, capsys):
     # Rerun is a no-op for finished candidates.
     capsys.readouterr()
     cli.main(["run", str(run), "--apply", "--roles", "reader"])
-    assert "0 to do" in capsys.readouterr().out
+    assert "1 finished, 0 waiting, 0 this run" in capsys.readouterr().out
 
 
 def test_model_down_still_plans_with_defaults(world, monkeypatch):

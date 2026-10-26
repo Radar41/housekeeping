@@ -353,9 +353,10 @@ def cmd_run(a):
     done = latest_state(run)
     todo = [c for c in cands if done.get(c["name"], {}).get("status") not in FINAL
             and not (not a.apply and done.get(c["name"], {}).get("status") == "planned")]
+    finished, waiting = len(cands) - len(todo), len(todo)
     todo = todo[:a.limit] if a.limit else todo
     roles = [r for r in a.roles.split(",") if r]
-    print(f"{len(todo)} to do, {len(cands) - len(todo)} already finished; roles {roles}; "
+    print(f"{len(cands)} candidates: {finished} finished, {waiting} waiting, {len(todo)} this run; roles {roles}; "
           f"{'APPLY: builds local repos, pushes nothing' if a.apply else 'dry run: rules and sizes only'}", flush=True)
     limits = {"files": a.max_files, "mb": a.max_mb}
     stop = threading.Event()
