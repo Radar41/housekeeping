@@ -1,0 +1,38 @@
+# Generic rules hk rebuild-all tries on every candidate, on top of rebuild-exclude.txt.
+# A rule is used for a candidate only if it drops none of its code, config or doc files;
+# otherwise it is listed as rejected in the review. Same syntax as rsync --exclude-from.
+# run outputs and results
+outputs/
+output/
+*_output/
+*_outputs/
+*_output_*/
+results/
+sweep_*/
+full_sweep/
+_RUN_*/
+simulator_out/
+checkpoints/
+wandb/
+mlruns/
+# caches
+cache/
+cache_*/
+.cache/
+# saved web pages and tool state
+*_files/
+.cd/
+.claude/
+.codex/
+.openhands/
+# generated data, logs, archives, binaries
+*.jsonl
+*.log
+*.gz
+*.pdf
+*.mp4
+*.mov
+*.wav
+*.exe
+*.dll
+*.deb
