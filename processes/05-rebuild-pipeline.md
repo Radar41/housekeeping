@@ -31,7 +31,7 @@ The script copies code, configs, and docs into `~/projects/<name>`, skips enviro
    ```bash
    cd ~/projects/<name> && mkdir -p slurm
    python ~/projects/housekeeping/templates/render.py ~/projects/housekeeping/templates/slurm/job.sbatch \
-     --set job_name=<name> partition=<partition> gres=gpu:1 time=02:00:00 mem=16G cpus=4 \
+     --set job_name=<name> partition=main gres=gpu:1 time=02:00:00 mem=16G cpus=4 \
            repo_dir=$PWD slurm_log_root=/srv/warm/cluster/atlas/_run/slurm \
            heartbeat_script=$HOME/projects/housekeeping/heartbeat/validator_heartbeat.py hb_interval=30 \
            command="make run" \
