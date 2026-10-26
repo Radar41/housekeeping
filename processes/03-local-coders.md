@@ -106,13 +106,13 @@ Ollama gives a 4,096-token context to any model on a GPU with less than 24 GB, a
    Set `limit.context` to the node's `OLLAMA_CONTEXT_LENGTH` (head 131072, workers 65536). Without it OpenCode assumes about 256K, never compacts in time, and Ollama silently drops the oldest context. Check: a 7.5K token prompt should show about 6% on head.
    On a worker, change the first `baseURL` to `http://$OLLAMA_HOST/v1` written out (for example `http://10.10.1.2:11434/v1`). Shortcut that writes the Ollama part for you: `ollama launch opencode --config`.
    Test: `cd ~/projects/housekeeping && opencode`, pick `ollama/qwen3.5:9b`, ask it to list the files in `processes/`. Then `/models`, pick `housekeeping/coder`, ask again; `tail -3 logs/router.tsv` should show a coder line.
-7. Codex CLI with Ollama ([Ollama Codex guide](https://docs.ollama.com/integrations/codex)). Needs Node.js; Codex talks to Ollama directly, not through the router.
+7. Optional, not installed on radar-41. Codex CLI with Ollama ([Ollama Codex guide](https://docs.ollama.com/integrations/codex)). Needs Node.js; Codex talks to Ollama directly, not through the router.
    ```bash
    npm install -g @openai/codex
    ollama launch codex --config
    codex --oss -m qwen3.5:9b
    ```
-8. Claude Code with Ollama ([Ollama Claude Code guide](https://docs.ollama.com/integrations/claude-code)). Also direct to Ollama.
+8. Optional, not installed on radar-41. Claude Code with Ollama ([Ollama Claude Code guide](https://docs.ollama.com/integrations/claude-code)). Also direct to Ollama.
    ```bash
    curl -fsSL https://claude.ai/install.sh | bash
    ollama launch claude
@@ -129,8 +129,8 @@ Ollama gives a 4,096-token context to any model on a GPU with less than 24 GB, a
    gh release download -R superset-sh/superset --pattern '*amd64.deb' --clobber
    sudo apt install ./superset-*-amd64.deb
    ```
-   Open it from the desktop session on head. OpenCode, Claude Code, and Codex are built-in agents and use the configs from steps 6 to 8. Point it at `~/projects/<repo>`.
-10. Mission Control, optional, to dispatch and review agent runs ([builderz-labs/mission-control](https://github.com/builderz-labs/mission-control)). Needs Node.js 22 and pnpm. It lists Claude Code and Codex adapters; OpenCode is not listed. Keep it separate from the Atlas instrument's RUN panel.
+   Open it from the desktop session on head. OpenCode, Claude Code, and Codex are built-in agents and use the configs from steps 6 to 8. On radar-41 only OpenCode is set up, so pick OpenCode. Point it at `~/projects/<repo>`.
+10. Mission Control, optional, to dispatch and review agent runs ([builderz-labs/mission-control](https://github.com/builderz-labs/mission-control)). Needs Node.js 22 and pnpm. It lists Claude Code and Codex adapters; OpenCode is not listed, so with only OpenCode installed it has nothing to dispatch to; skipped on radar-41. Keep it separate from the Atlas instrument's RUN panel.
     ```bash
     cd ~/apps && git clone https://github.com/builderz-labs/mission-control.git && cd mission-control
     bash install.sh --local
