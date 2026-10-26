@@ -1,0 +1,25 @@
+# Template: user-level systemd unit serving one model.
+# placeholders: model_dir, port, env_file, exec_start
+#   exec_start picks the backend. Systemd expands ${MODEL_DIR} and ${PORT} from this unit.
+#   llama.cpp: /usr/bin/env llama-server -m ${MODEL_DIR}/model.gguf --host 0.0.0.0 --port ${PORT} -ngl 99
+#   vLLM:      /usr/bin/env vllm serve ${MODEL_DIR} --host 0.0.0.0 --port ${PORT}
+# Install: copy the rendered file to ~/.config/systemd/user/model-server.service, then
+#   systemctl --user daemon-reload && systemctl --user enable --now model-server
+# Survive reboot without a login session (run once as the service user):
+#   loginctl enable-linger $USER
+[Unit]
+Description=Model server {{model_dir}} on port {{port}}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=MODEL_DIR=%h/models/{{model_dir}}
+Environment=PORT={{port}}
+EnvironmentFile={{env_file}}
+ExecStart={{exec_start}}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

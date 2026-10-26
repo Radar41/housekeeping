@@ -12,6 +12,7 @@ make run, make test, make slurm (added as modules land)
 - `make run MOD=mover ARGS="plan table.csv"`; `apply table.csv --apply [--push]`; `undo logs/moves.tsv [--since ISO] --apply`. Dry-run unless --apply.
 - `make run MOD=atlas-queries ARGS="<provenance-check|inbox-three-way|project-table> [--root-id N] [--format tsv|csv] [--out FILE --apply]"` runs a read-only Atlas query using the DSN in `$ATLAS_DSN`.
 - intake: `make run MOD=intake ARGS="copy"` (dry-run; add `--apply` to copy), then `ARGS="check"` and `ARGS="report"`
+python templates/render.py templates/slurm/job.sbatch --set key=value ... [--out PATH --apply] renders a template (dry-run by default)
 
 ## Depends on
 Atlas (Postgres/pgvector on head), SLURM, Python 3.12 with uv
