@@ -12,6 +12,11 @@ The script copies code, configs, and docs into `~/projects/<name>`, skips enviro
    cd ~/projects/housekeeping
    scripts/rebuild-pipeline.sh "/home/radar-41-0/<dir>" <name>
    ```
+   If the folder holds old run outputs that are small enough to slip under 5 MB (sweeps, `*_output/`, generated JSON), put rules for that one pipeline in a file outside the repo and pass it to both the dry run and the real run. Same syntax as `scripts/rebuild-exclude.txt`; a leading `/` anchors a rule at the source folder. The file's path and hash go into `SOURCES.txt`.
+   ```bash
+   mkdir -p ~/data/housekeeping/rebuilds
+   scripts/rebuild-pipeline.sh "/home/radar-41-0/<dir>" <name> --exclude-from ~/data/housekeeping/rebuilds/<name>.exclude
+   ```
 3. Run it. Pass the command `make run` should call if it is not `run.sh` or `main.py`.
    ```bash
    scripts/rebuild-pipeline.sh "/home/radar-41-0/<dir>" <name> --entry "python fit.py" --apply

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Rebuild one old pipeline folder as a clean repo under ~/projects. Process 5 in INSTRUCTIONS.md.
 #
-# usage: scripts/rebuild-pipeline.sh SRC_DIR NAME [--entry "CMD"] [--apply]
+# usage: scripts/rebuild-pipeline.sh SRC_DIR NAME [--entry "CMD"] [--exclude-from FILE] [--apply]
 #
 # Copies code, configs, and docs (rules in scripts/rebuild-exclude.txt, files over 5 MB skipped)
 # into $HK_PROJECTS/NAME, adds the standard files, makes a first commit, and runs the checker.
@@ -22,11 +22,12 @@ EXCLUDE="$HK/scripts/rebuild-exclude.txt"
 
 die() { echo "rebuild: $*" >&2; exit 2; }
 
-SRC="" NAME="" ENTRY="" APPLY=0
+SRC="" NAME="" ENTRY="" EXTRA="" APPLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) APPLY=1 ;;
     --entry) shift; ENTRY="${1:-}" ;;
+    --exclude-from) shift; EXTRA="${1:-}" ;;
     -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
     -*) die "unknown option $1" ;;
     *) if [ -z "$SRC" ]; then SRC="$1"; elif [ -z "$NAME" ]; then NAME="$1"; else die "too many arguments"; fi ;;
@@ -36,6 +37,8 @@ done
 [ -n "$SRC" ] && [ -n "$NAME" ] || die "usage: scripts/rebuild-pipeline.sh SRC_DIR NAME [--entry CMD] [--apply]"
 [[ "$NAME" =~ ^[A-Za-z0-9._-]+$ ]] || die "NAME may only use letters, digits, dot, dash, underscore"
 [ -d "$SRC" ] || die "not a directory: $SRC"
+[ -z "$EXTRA" ] || [ -f "$EXTRA" ] || die "exclude file not found: $EXTRA"
+[ -z "$EXTRA" ] || EXTRA="$(cd "$(dirname "$EXTRA")" && pwd -P)/$(basename "$EXTRA")"
 command -v rsync >/dev/null || die "rsync is not installed"
 SRC="$(cd "$SRC" && pwd -P)"
 DST="$PROJECTS/$NAME"
@@ -58,6 +61,8 @@ fi
 git var GIT_AUTHOR_IDENT >/dev/null 2>&1 || die "git has no user.name/user.email; set them with git config --global first"
 
 RSYNC=(rsync -a --prune-empty-dirs --max-size="$MAX_SIZE" --exclude-from="$EXCLUDE")
+# Per-pipeline rules (kept outside the repo, e.g. ~/data/housekeeping/rebuilds/NAME.exclude).
+[ -z "$EXTRA" ] || RSYNC+=(--exclude-from="$EXTRA")
 echo "source:      $SRC"
 echo "destination: $DST"
 PLAN="$("${RSYNC[@]}" -n --out-format='%n' "$SRC/" "$DST/" | grep -v '/$' || true)"
@@ -82,6 +87,7 @@ NOW="$(date -u +%FT%TZ)"
   echo "host: $(hostname)"
   echo "rebuilt_at: $NOW"
   echo "rules: scripts/rebuild-exclude.txt, max size $MAX_SIZE"
+  [ -z "$EXTRA" ] || echo "extra rules: $EXTRA sha256 $(sha256sum "$EXTRA" | cut -d" " -f1)"
   echo "files: $COUNT"
 } > SOURCES.txt
 find . -type f -not -path './.git/*' -not -name SOURCES.txt -not -name SOURCES.sha256 -print0 \

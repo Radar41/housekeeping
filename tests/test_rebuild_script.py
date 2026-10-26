@@ -73,3 +73,23 @@ def test_refuses_existing_other_and_protected(env):
     (prot / "a.py").write_text("x = 1\n")
     r = run(e, prot, "p2", "--apply")
     assert r.returncode == 2 and "protected" in r.stderr
+
+
+def test_exclude_from_drops_outputs_and_is_recorded(env):
+    tmp, src, e = env
+    (src / "sweep_v2").mkdir()
+    (src / "sweep_v2" / "r1.json").write_text("{}")
+    (src / "engine").mkdir()
+    (src / "engine" / "tree.py").write_text("x = 1\n")
+    (src / "engine" / "node1.json").write_text("{}")
+    rules = tmp / "fit.exclude"
+    rules.write_text("sweep_*/\n/engine/*.json\n")
+    r = run(e, src, "fit", "--exclude-from", rules)
+    assert r.returncode == 0 and "files to copy: 2" in r.stdout, r.stdout
+    assert run(e, src, "fit", "--exclude-from", tmp / "missing").returncode == 2
+    r = run(e, src, "fit", "--exclude-from", rules, "--apply")
+    assert r.returncode == 0, r.stderr
+    dst = tmp / "projects" / "fit"
+    assert (dst / "engine" / "tree.py").exists() and not (dst / "engine" / "node1.json").exists()
+    assert not (dst / "sweep_v2").exists()
+    assert f"extra rules: {rules}" in (dst / "SOURCES.txt").read_text()
