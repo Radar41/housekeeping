@@ -19,3 +19,7 @@ protected_names_file = "/home/radar-41-0/projects/housekeeping/protected_names.t
 machine = "winbox"
 target_root = "/home/radar-41-0/inbox"
 sources = []
+
+[atlas_queries]
+log = "logs/atlas_queries.tsv"
+default_format = "tsv"
