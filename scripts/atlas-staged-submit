@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# No cancellation, sudo, Ollama unloading, dependency installs, or credential copying.
+set -euo pipefail
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+[[ $# == 2 && "$2" == "--apply" ]] || {
+  echo "usage: $0 RUN_ID --apply  (submit CPU + GPU staging jobs; no canonical publication)"; exit 2;
+}
+RUN="$1"
+[[ "$RUN" =~ ^[0-9a-fA-F-]{36}$ ]] || { echo "invalid run id"; exit 2; }
+ATLAS=/srv/warm/cluster/atlas
+STAGE="$ATLAS/_run/staged/$RUN"
+umask 077
+mkdir -p "$STAGE"
+# Launch from shared storage, not the head-only ~/projects checkout.
+[[ "$ROOT" == "$ATLAS/"* ]] || {
+  echo "Install this checkout under $ATLAS/tools/housekeeping-staged first (see runbook)."; exit 2;
+}
+command -v sbatch >/dev/null
+command -v flock >/dev/null
+exec 9>"$STAGE/submit.lock"
+flock -n 9 || { echo "another submit command is active"; exit 2; }
+[[ ! -e "$STAGE/jobs.tsv" ]] || {
+  echo "jobs.tsv exists; refuse duplicate pool. Use individual recorded job IDs for resume."; exit 2;
+}
+# Existing embedding slices must be explicitly paused by the operator.
+if squeue -u "$USER" -h -o '%j' | grep -Eq '^atlas-(fo|stage-)'; then
+  echo "Existing Atlas slices/pool are queued. Inspect squeue and stop the specific old job IDs first."; exit 2
+fi
+for node in head node-a node-b; do
+  # Ollama is outside Slurm. Do not unload models or assume squeue reflects GPU usage.
+  if [[ "$node" == head ]]; then
+    ACTIVE="$(nvidia-smi --query-compute-apps=pid --format=csv,noheader)"
+  else
+    ACTIVE="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$node" nvidia-smi --query-compute-apps=pid --format=csv,noheader)"
+  fi
+  [[ -z "$ACTIVE" ]] || { echo "GPU busy on $node; release its current workload before submission."; exit 2; }
+done
+unset ATLAS_FULL_SWEEP
+"$ROOT/scripts/atlas-staged" doctor
+# Record IDs immediately; if a later submission fails, do not resubmit earlier jobs.
+: > "$STAGE/jobs.tsv"
+submit() {
+  local role="$1" node="$2" cpus="$3" mem="$4" gres="$5" command="$6" dsn="$7"
+  local batch=4 extras=""
+  [[ "$role" != embed-head ]] || batch=8
+  [[ "$command" != embed ]] || extras="--batch $batch"
+  local args=(--parsable --partition=main --nodelist="$node" --nodes=1
+    --ntasks=1 --cpus-per-task="$cpus" --mem="$mem" --time=48:00:00 --requeue
+    --open-mode=append --job-name="atlas-stage-$role" --output="$STAGE/$role-%j.log"
+    --chdir="$ROOT" --export=ALL)
+  [[ "$gres" == none ]] || args+=(--gres="$gres")
+  local job
+  # Values here are fixed site configuration, not caller-supplied shell fragments.
+  job="$(ATLAS_DSN="$dsn" OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=1 \
+    ATLAS_EMBED_DEVICE=cuda ATLAS_EMBED_BATCH_SIZE="$batch" \
+    sbatch "${args[@]}" --wrap="exec '$ROOT/scripts/atlas-staged' $command '$RUN' --watch $extras")"
+  printf '%s\t%s\t%s\n' "$role" "$node" "${job%%;*}" | tee -a "$STAGE/jobs.tsv"
+}
+for i in 0 1 2 3; do
+  submit "prep-$i" head 2 4096M none prepare 'dbname=atlas'
+done
+submit embed-head head 4 32000M gpu:nvidia_rtx_4000_ada_generation:1 embed 'dbname=atlas'
+submit embed-a node-a 4 12000M gpu:nvidia_geforce_rtx_5070:1 embed \
+  'host=10.10.1.1 dbname=atlas user=radar-41-0 passfile=/home/radar-41-0/.pgpass'
+submit embed-b node-b 4 12000M gpu:nvidia_geforce_rtx_5070:1 embed \
+  'host=10.10.2.1 dbname=atlas user=radar-41-0 passfile=/home/radar-41-0/.pgpass'
+echo "Pool submitted. No canonical publisher was launched. Run remains paused until you resume it."
