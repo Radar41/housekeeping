@@ -6,4 +6,7 @@ PY="${ATLAS_PYTHON:-/srv/warm/cluster/atlas/.venv/bin/python}"
 export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONUNBUFFERED=1
 export ATLAS_FULL_SWEEP=0
+# Same as the legacy Atlas slices: workers have no DNS; load the model from the local cache.
+export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
 exec "$PY" -m housekeeping.staged "$@"

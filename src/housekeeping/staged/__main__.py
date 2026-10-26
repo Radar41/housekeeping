@@ -238,6 +238,7 @@ if __name__ == "__main__":
         stage = sys.argv[1] if len(sys.argv) > 1 else None
         print(json.dumps({"error": type(e).__name__, "stage": stage,
                           "reason": str(e) if isinstance(e, Incompatible) else "stage failed; transaction rolled back",
+                          "cause": type(e.__cause__).__name__ if e.__cause__ else None,
                           "database_message": detail}),
               file=sys.stderr)
         sys.exit(1)
