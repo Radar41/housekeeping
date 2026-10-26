@@ -17,3 +17,35 @@ protected_names_file = "/home/radar-41-0/projects/housekeeping/protected_names.t
 machine = "winbox"
 target_root = "/home/radar-41-0/inbox"
 sources = []
+
+[router]
+host = "0.0.0.0"
+port = 8000
+log = "logs/router.tsv"
+heartbeat_dir = "heartbeats"
+health_interval_s = 10
+health_timeout_s = 3
+
+[router.overflow_inflight]
+reader = 4
+coder = 2
+
+[router.roles.embedder]
+url = "http://localhost:8101"
+model = "embedder-model"
+timeout_s = 30
+
+[router.roles.reader]
+url = "http://localhost:8102"
+model = "reader-model"
+timeout_s = 120
+
+[router.roles.coder]
+url = "http://localhost:8103"
+model = "coder-model"
+timeout_s = 300
+
+[router.andromeda]
+url = "http://andromeda:8000"
+roles_allowed = ["reader", "coder"]
+enabled = false

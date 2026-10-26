@@ -1,0 +1,12 @@
+[Unit]
+Description=housekeeping role router
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/projects/housekeeping
+ExecStart=%h/.local/bin/uv run hk router serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
