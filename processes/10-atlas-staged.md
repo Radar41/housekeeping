@@ -60,6 +60,16 @@ If this checkout already exists, do not clone over it. Check its local modificat
 
 The scripts use `/srv/warm/cluster/atlas/.venv/bin/python`, not system Python and not a fresh environment. They load their package directly from this checkout. No `pip install`, model download, credential rotation or sudo operation is performed by the scripts.
 
+## One-time database setup
+
+The staging tables live in their own schema, `hk_stage`, next to `atlas`. If the Atlas role cannot create schemas in the `atlas` database, `init` stops and prints the exact command. Run it once as the database superuser; it creates an empty schema owned by your role and touches nothing in `atlas`:
+
+```bash
+sudo -u postgres psql -d atlas -c 'CREATE SCHEMA IF NOT EXISTS hk_stage AUTHORIZATION "radar-41-0"'
+```
+
+`init` then creates its tables inside that schema and is safe to rerun. To remove all staging state later: `psql -d atlas -c 'DROP SCHEMA hk_stage CASCADE'`.
+
 ## Inventory and selection
 
 Keep the existing protected-names file outside this repository. The example uses the path already configured by the housekeeping setup; use the actual configured path if different.

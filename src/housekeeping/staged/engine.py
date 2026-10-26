@@ -81,6 +81,25 @@ class Pipeline:
 
     def init(self):
         with self.connection() as c:
+            user = c.execute("SELECT current_user AS u").fetchone()["u"]
+            # PostgreSQL checks database CREATE privilege before IF NOT EXISTS, so only
+            # attempt CREATE SCHEMA when the schema is genuinely missing.
+            if c.execute("SELECT to_regnamespace('hk_stage') IS NULL AS missing").fetchone()["missing"]:
+                try:
+                    with c.transaction():
+                        c.execute("CREATE SCHEMA hk_stage")
+                except psycopg.errors.InsufficientPrivilege:
+                    raise Incompatible(
+                        "this role cannot create schemas in the atlas database. Run once: "
+                        f"sudo -u postgres psql -d atlas -c 'CREATE SCHEMA IF NOT EXISTS hk_stage "
+                        f"AUTHORIZATION \"{user}\"'") from None
+            row = c.execute("""SELECT pg_get_userbyid(nspowner) AS owner,
+                                      has_schema_privilege('hk_stage', 'CREATE') AS can_create
+                               FROM pg_namespace WHERE nspname = 'hk_stage'""").fetchone()
+            if not row["can_create"]:
+                raise Incompatible(
+                    f"schema hk_stage exists (owner {row['owner']}) but this role cannot create tables in it. "
+                    f"Run once: sudo -u postgres psql -d atlas -c 'ALTER SCHEMA hk_stage OWNER TO \"{user}\"'")
             c.execute(Path(__file__).with_name("schema.sql").read_text())
 
     def root(self, c, root_id):

@@ -233,7 +233,11 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         sys.exit(130)
     except Exception as e:
-        print(json.dumps({"error": type(e).__name__,
-                          "reason": str(e) if isinstance(e, Incompatible) else "stage failed; transaction rolled back"}),
+        diag = getattr(e, "diag", None)
+        detail = getattr(diag, "message_primary", None) if diag is not None else None
+        stage = sys.argv[1] if len(sys.argv) > 1 else None
+        print(json.dumps({"error": type(e).__name__, "stage": stage,
+                          "reason": str(e) if isinstance(e, Incompatible) else "stage failed; transaction rolled back",
+                          "database_message": detail}),
               file=sys.stderr)
         sys.exit(1)

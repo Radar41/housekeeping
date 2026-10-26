@@ -359,3 +359,40 @@ p.add_argument('--docs-md-threshold', default=DEFAULT_MD_THRESHOLD)
 p.add_argument('--max-chunks-per-file', default=50)
 """)
     assert defaults_from_source(p) == {"--docs-md-threshold": 123, "--max-chunks-per-file": 50}
+
+
+def test_init_without_schema_create_privilege_then_admin_precreated_schema(db, server):
+    """Mirrors head: the Atlas role cannot CREATE SCHEMA, and IF NOT EXISTS does not bypass that check."""
+    admin_dsn, _ = db
+    with psycopg.connect(admin_dsn, autocommit=True) as c:
+        c.execute("DROP SCHEMA IF EXISTS hk_stage CASCADE")
+        c.execute("DROP ROLE IF EXISTS hk_limited")
+        c.execute("CREATE ROLE hk_limited LOGIN")
+        dbname = c.execute("SELECT current_database()").fetchone()[0]
+        c.execute(f'REVOKE CREATE ON DATABASE "{dbname}" FROM PUBLIC')
+        c.execute(f'GRANT CONNECT ON DATABASE "{dbname}" TO hk_limited')
+        c.execute("GRANT USAGE ON SCHEMA atlas TO hk_limited")
+    limited = psycopg.conninfo.make_conninfo(admin_dsn, user="hk_limited", password=None)
+    with pytest.raises(Incompatible) as e:
+        Pipeline(limited, FakeAtlas()).init()
+    assert "CREATE SCHEMA IF NOT EXISTS hk_stage AUTHORIZATION \"hk_limited\"" in str(e.value)
+
+    with psycopg.connect(admin_dsn, autocommit=True) as c:
+        c.execute("CREATE SCHEMA hk_stage AUTHORIZATION hk_limited")
+    Pipeline(limited, FakeAtlas()).init()   # schema exists and is owned: no CREATE SCHEMA attempted
+    Pipeline(limited, FakeAtlas()).init()   # idempotent
+    with psycopg.connect(limited) as c:
+        assert c.execute("SELECT count(*) FROM hk_stage.run").fetchone()[0] == 0
+
+    with psycopg.connect(admin_dsn, autocommit=True) as c:
+        c.execute("DROP SCHEMA hk_stage CASCADE")
+        c.execute("CREATE SCHEMA hk_stage")            # owned by admin, no rights for hk_limited
+    with pytest.raises(Incompatible) as e:
+        Pipeline(limited, FakeAtlas()).init()
+    assert "ALTER SCHEMA hk_stage OWNER TO \"hk_limited\"" in str(e.value)
+    with psycopg.connect(admin_dsn, autocommit=True) as c:
+        c.execute("DROP SCHEMA hk_stage CASCADE")
+        c.execute(f'GRANT CREATE ON DATABASE "{dbname}" TO PUBLIC')
+        c.execute("REVOKE ALL ON SCHEMA atlas FROM hk_limited")
+        c.execute(f'REVOKE ALL ON DATABASE "{dbname}" FROM hk_limited')
+        c.execute("DROP ROLE hk_limited")

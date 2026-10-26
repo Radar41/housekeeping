@@ -1,4 +1,4 @@
-CREATE SCHEMA IF NOT EXISTS hk_stage;
+-- The hk_stage schema is created by init() (or once by an admin); see processes/10-atlas-staged.md.
 CREATE TABLE IF NOT EXISTS hk_stage.run (
     id uuid PRIMARY KEY,
     root_id bigint NOT NULL,
