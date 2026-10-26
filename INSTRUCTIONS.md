@@ -17,6 +17,7 @@ Nothing here moves or deletes a file. Every tool is a dry run until you add `--a
 | 6 | [Check repos](processes/06-repo-check.md) | repeat after every rebuild, and weekly | PASS or FAIL per repo against `STANDARDS.md` |
 | 7 | [Bring in the Windows drives](processes/07-intake.md) | one-time per machine, then check | a copy under `~/inbox/<machine>/<drive>/` and a `CHECK.txt` |
 | 8 | [Move files](processes/08-moves.md) | not yet | on hold until you decide to file things |
+| 10 | [Atlas metadata-first ingestion](processes/10-atlas-staged.md) | staged replacement | one inventory, CPU preparation and shared GPU queues; existing embeddings preserved |
 
 ## Daily loop, once 0 to 4 are done
 

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="${ATLAS_PYTHON:-/srv/warm/cluster/atlas/.venv/bin/python}"
+[[ -x "$PY" ]] || { echo "Atlas Python missing: $PY" >&2; exit 2; }
+export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONUNBUFFERED=1
+export ATLAS_FULL_SWEEP=0
+exec "$PY" -m housekeeping.staged "$@"

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# One metadata scan, plan, and aggregate report. Never submits GPUs or publishes content.
+set -euo pipefail
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+[[ $# -ge 1 ]] || {
+  echo "usage: $0 /absolute/path/protected_names.txt [additional create options]"; exit 2;
+}
+NAMES="$1"; shift
+[[ -f "$NAMES" ]] || { echo "protected_names file is required"; exit 2; }
+ATLAS=/srv/warm/cluster/atlas
+STATE="$ATLAS/_run/staged"
+umask 077
+mkdir -p "$STATE"
+exec 9>"$STATE/inventory.lock"
+flock -n 9 || { echo "an inventory command is already running"; exit 2; }
+"$ROOT/scripts/atlas-staged" doctor
+"$ROOT/scripts/atlas-staged" init
+RUN="$("$ROOT/scripts/atlas-staged" create --protected-names "$NAMES" "$@")"
+mkdir -p "$STATE/$RUN"
+printf '%s\n' "$RUN" > "$STATE/latest-run"
+echo "Run saved at $STATE/latest-run. Interrupted scans resume with: scripts/atlas-staged scan $RUN"
+"$ROOT/scripts/atlas-staged" scan "$RUN"
+"$ROOT/scripts/atlas-staged" plan "$RUN"
+echo "Metadata inventory and plan complete. Run $RUN remains paused; canonical Atlas is untouched."
