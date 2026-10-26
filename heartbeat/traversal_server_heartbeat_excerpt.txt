@@ -1,0 +1,122 @@
+25- *
+26- * PROTOCOL v2 Phase 5 additions (control instrument):
+27- *   /api/projects             relevance projects + curvature progress
+28: *   /api/runs                 live squeue view merged with log heartbeats
+29- *   /api/edge-feed?...        curvature commit feed (updated_at cursor)
+30- *   /api/chains?... /api/chain?chain_id=   version chains / one chain
+31- *   POST /api/run-control     THE ONLY MUTATING ENDPOINT — whitelisted argv
+32- *                             (submit legacy|offline / hold / release /
+33- *                             cancel), validated inputs, append-only action
+34- *                             log at _run/instrument/actions.log. Read-only
+35- *                             everywhere else, unchanged.
+36- */
+37-
+38-import { createServer } from "node:http";
+39-import { readFileSync, statSync, appendFileSync, mkdirSync, readdirSync, existsSync, writeFileSync, renameSync } from "node:fs";
+40-import { dirname, join, resolve, basename } from "node:path";
+41-import { DEFAULT_CONFIG as WATCHDOG_CONFIG, decide, normalizeState, recordRestart } from "./instrument_automation.mjs";
+42-import { proxyArchimedes, validateArchimedesQuery } from "./archimedes_proxy.mjs";
+43-import { fileURLToPath } from "node:url";
+44-import { spawn } from "node:child_process";
+45-import { userInfo } from "node:os";
+46-
+47-const HERE = dirname(fileURLToPath(import.meta.url));
+48-const ATLAS_CODE = "/srv/warm/cluster/atlas/code/atlas";
+49-const ROOT_IDS = [21, 10, 5, 2, 1];
+50-
+51-function parseArgs(argv) {
+52-  const args = { port: 8790, host: "127.0.0.1", excerptBytes: 2400, k: 12, watchdog: true };
+53-  for (let i = 2; i < argv.length; i++) {
+--
+390-  return { ok: true, rows };
+391-}
+392-
+393:function lastHeartbeat(logPath) {
+394-  try {
+395-    const stat = statSync(logPath);
+396-    const text = readFileSync(logPath, "utf-8");
+397-    const lines = text.trimEnd().split("\n");
+398-    for (let i = lines.length - 1; i >= 0; i--) {
+399-      const line = lines[i];
+400-      if (line.startsWith("{") && (line.includes('"curvature_progress"') || line.includes('"seen"'))) {
+401-        const beat = JSON.parse(line);
+402-        return { ...beat, age_sec: Math.round((Date.now() - stat.mtimeMs) / 1000) };
+403-      }
+404-    }
+405-    return { age_sec: Math.round((Date.now() - stat.mtimeMs) / 1000) };
+406-  } catch (e) {
+407-    return null;
+408-  }
+409-}
+410-
+411:function heartbeatsForJob(jobId) {
+412-  const beats = {};
+413-  let dirs = [];
+414-  try { dirs = readdirSync(SLURM_LOG_ROOT); } catch (e) { return beats; }
+415-  for (const dir of dirs) {
+416-    let files = [];
+417-    try { files = readdirSync(join(SLURM_LOG_ROOT, dir)); } catch (e) { continue; }
+418-    for (const file of files) {
+419-      const m = file.match(new RegExp(`-(${jobId})-([0-9]+)\\.log$`));
+420-      if (!m) continue;
+421:      const beat = lastHeartbeat(join(SLURM_LOG_ROOT, dir, file));
+422-      if (beat) beats[m[2]] = { ...beat, log: join("_run/slurm", dir, file) };
+423-    }
+424-  }
+425-  return beats;
+426-}
+427-
+428-let projectsCache = { at: 0, payload: null };
+429-
+430-async function projectsPayload(force) {
+431-  if (!force && projectsCache.payload && Date.now() - projectsCache.at < 600_000) {
+432-    return projectsCache.payload;
+433-  }
+434-  const config = JSON.parse(readFileSync(join(ATLAS_REPO, "data/asana_projects.json"), "utf-8"));
+435-  const rows = await db(`
+436-    WITH proj_edges AS (
+437-      SELECT r.project, e.edge_id, e.ollivier_ricci_curvature
+438-      FROM atlas.atlas_doc_relevance r
+439-      JOIN atlas.atlas_similarity_edge e ON e.doc_id_a = r.document_id
+440-      WHERE r.status = 'active' AND r.score > 0 AND e.root_id = 21
+441-      UNION
+442-      SELECT r.project, e.edge_id, e.ollivier_ricci_curvature
+443-      FROM atlas.atlas_doc_relevance r
+444-      JOIN atlas.atlas_similarity_edge e ON e.doc_id_b = r.document_id
+445-      WHERE r.status = 'active' AND r.score > 0 AND e.root_id = 21
+446-    ),
+--
+1406-      byJob[jobId].tasks.push(row);
+1407-    }
+1408-    const runs = Object.values(byJob).map((job) => {
+1409:      const beats = heartbeatsForJob(job.job_id);
+1410-      return {
+1411-        ...job,
+1412-        tasks: job.tasks.map((t) => ({
+1413-          ...t,
+1414:          heartbeat: beats[t.array_task] ?? beats["0"] ?? null,
+1415-        })),
+1416-      };
+1417-    });
+1418-    return json(res, 200, {
+1419-      squeue_ok: snapshot.ok,
+1420-      squeue_method: "-o parse (pipe-delimited; --json not assumed on this SLURM)",
+1421-      error: snapshot.ok ? undefined : snapshot.error,
+1422-      runs,
+1423-    });
+1424-  }
+1425-
+1426-  if (p === "/api/edge-feed") {
+1427-    const sinceTs = q.get("since_ts") || "1970-01-01T00:00:00Z";
+1428-    const sinceId = intParam(q.get("since_id"), 0, 0, 9_007_199_254_740_000);
+1429-    const limit = intParam(q.get("limit"), 200, 1, 1000);
+1430-    const project = q.get("project");
+1431-    const prefix = q.get("prefix");
+1432-    const canonicalOnly = q.get("canonical_only") === "1";
+1433-    const crossOnly = q.get("cross_prefix_only") === "1";
+1434-    const params = [sinceTs, sinceId];
+1435-    let filters = "";
+1436-    if (canonicalOnly) {
+1437-      filters += ` AND (da.version_status IS NULL OR da.version_status = 'canonical')
+1438-                   AND (db.version_status IS NULL OR db.version_status = 'canonical')`;
+1439-    }
