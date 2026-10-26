@@ -1,5 +1,6 @@
 """hk checker <repo>... | --all <dir> [--json]. Read only: never modifies a repo."""
 import json
+import hashlib
 import re
 import subprocess
 import tomllib
@@ -159,8 +160,34 @@ def check_secrets(repo, files):
     return _hit_result(found, "possible secret")
 
 
+def unchanged_originals(repo: Path) -> set[str]:
+    """Files still byte-identical to the copy recorded in SOURCES.sha256 by rebuild-pipeline.sh."""
+    listing = repo / "SOURCES.sha256"
+    if not listing.is_file():
+        return set()
+    same = set()
+    for line in listing.read_text(encoding="utf-8", errors="replace").splitlines():
+        digest, _, rel = line.partition("  ")
+        rel = rel[2:] if rel.startswith("./") else rel
+        p = repo / rel
+        try:
+            if rel and p.is_file() and not p.is_symlink() and hashlib.sha256(p.read_bytes()).hexdigest() == digest:
+                same.add(rel)
+        except OSError:
+            pass
+    return same
+
+
 def check_emdash(repo, files):
-    return _hit_result(_hits(repo, files, lambda line: EMDASH in line), "em dash")
+    # Style rule for text written in the repo. Copied originals keep their bytes so they
+    # still match Atlas by sha256; once a file is edited it is checked like any other.
+    # Secrets and protected checks still cover every file.
+    originals = unchanged_originals(repo)
+    found = _hits(repo, [f for f in files if f not in originals], lambda line: EMDASH in line)
+    ok, detail = _hit_result(found, "em dash")
+    if ok and originals:
+        detail = f"{detail}; {len(originals)} unchanged copied originals not style-checked"
+    return ok, detail
 
 
 def load_protected(path: str | None):
