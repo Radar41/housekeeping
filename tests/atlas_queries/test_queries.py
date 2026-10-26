@@ -2,6 +2,8 @@ import hashlib
 import re
 import uuid
 
+from datetime import datetime, timezone
+
 import pytest
 
 from conftest import SQL_DIR, sql_text
@@ -51,8 +53,8 @@ def test_provenance_check(db):
     assert {r["action"] for r in rows} == {"edit", "move"}
     edit = [r for r in rows if r["action"] == "edit"]
     assert edit[0]["type_total"] == 7
-    assert str(edit[0]["type_first_at"].date()) == "2026-06-02"
-    assert str(edit[0]["type_last_at"].date()) == "2026-08-13"
+    assert str(edit[0]["type_first_at"].astimezone(timezone.utc).date()) == "2026-06-02"
+    assert str(edit[0]["type_last_at"].astimezone(timezone.utc).date()) == "2026-08-13"
     flagged = [r for r in edit if r["gap_in_july_2026"]]
     assert len(flagged) == 1 and str(flagged[0]["week_start"]) == "2026-08-10"
     assert flagged[0]["gap_days"] == 35
@@ -218,4 +220,4 @@ def test_pipeline_dirs(db):
     assert p["markers"] == "job.sbatch,run.sh"
     assert p["projects"] == "forecasting"
     assert p["has_readme"] is True and rows[(1, ".")]["has_readme"] is False
-    assert str(p["newest_mtime"].date()) == "2026-03-01"
+    assert p["newest_mtime"] == datetime(2026, 3, 1, tzinfo=timezone.utc)

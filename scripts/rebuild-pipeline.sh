@@ -93,7 +93,9 @@ if [ -f README.md ]; then mv README.md README.source.md; fi
 # Python: add pyproject.toml and uv.lock only if there are none.
 HAS_PY=0; find . -name '*.py' -not -path './.git/*' | grep -q . && HAS_PY=1
 if [ "$HAS_PY" -eq 1 ] && [ ! -f pyproject.toml ]; then
-  uv init --bare --no-workspace --no-pin-python --python 3.12 --name "$(echo "$NAME" | tr 'A-Z.' 'a-z-')" >/dev/null
+  # Written by hand, not uv init: uv init --bare needs uv 0.6+, and head had 0.5.9.
+  printf '[project]\nname = "%s"\nversion = "0.1.0"\nrequires-python = ">=3.12"\ndependencies = []\n' \
+    "$(echo "$NAME" | tr 'A-Z._' 'a-z--')" > pyproject.toml
 fi
 if [ -f pyproject.toml ] && [ ! -f uv.lock ]; then uv lock -q || echo "uv lock failed; fix pyproject.toml by hand"; fi
 
