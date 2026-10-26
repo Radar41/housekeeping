@@ -27,6 +27,7 @@ SAMPLE = {
     "mem": "32G",
     "cpus": "8",
     "repo_dir": "/home/radar-41-0/projects/housekeeping",
+    "slurm_log_root": "/srv/warm/cluster/atlas/_run/slurm",
     "heartbeat_script": "heartbeat/validator_heartbeat.py",
     "hb_interval": "30",
     "command": "uv run hk embed --apply",
@@ -147,16 +148,19 @@ HB_DIR = ROOT / "heartbeat"
 SERVER_FILE_RE = r"-(%s)-([0-9]+)\.log$"
 
 
-def run_hb(name, tmp_path, state, env_extra):
+def run_hb(name, tmp_path, state, env_extra, script=None):
     import os
     tpl = TPL / "slurm" / name
-    values = {**values_for(tpl.read_text()), "heartbeat_script": str(HB_DIR / "validator_heartbeat.py")}
+    root = tmp_path / "slurm"
+    values = {**values_for(tpl.read_text()), "slurm_log_root": str(root),
+              "heartbeat_script": script or str(HB_DIR / "validator_heartbeat.py")}
     text = run_render(tpl, values).stdout
     body = re.search(r"^hb\(\) \{.*?^\}$", text, re.M | re.S).group(0)
-    root = tmp_path / "slurm"
-    env = {**os.environ, "SLURM_LOG_ROOT": str(root), "SLURM_JOB_NAME": "val", "SLURM_JOB_ID": "4242", **env_extra}
-    subprocess.run(["bash", "-c", f'STAGE=embed\n{body}\nhb running\nhb {state}'], env=env, check=True)
-    return root
+    env = {**os.environ, "SLURM_JOB_NAME": "val", "SLURM_JOB_ID": "4242", **env_extra}
+    r = subprocess.run(["bash", "-c", f'STAGE=embed\n{body}\nhb running\nhb {state}\necho rc=$?'],
+                       env=env, capture_output=True, text=True)
+    assert "rc=0" in r.stdout, r.stderr
+    return root, r.stderr
 
 
 def last_beat_line(log):
@@ -167,22 +171,22 @@ def last_beat_line(log):
 
 
 def test_job_hb_call_shape(tmp_path):
-    root = run_hb("job.sbatch", tmp_path, "ok", {})
+    root, _ = run_hb("job.sbatch", tmp_path, "ok", {})
     files = list((root / "val").iterdir())
     assert len(files) == 1
     m = re.search(SERVER_FILE_RE % "4242", files[0].name)
     assert m and m.group(2) == "0"
     beat = last_beat_line(files[0])
-    assert beat["seen"] == 2 and beat["state"] == "ok"
+    assert beat["seen"] == 2 and beat["state"] == "ok" and beat["run_id"] == "val-4242"
 
 
 def test_array_hb_call_shape(tmp_path):
-    root = run_hb("array.sbatch", tmp_path, "failed", {"SLURM_ARRAY_JOB_ID": "4200", "SLURM_ARRAY_TASK_ID": "1"})
+    root, _ = run_hb("array.sbatch", tmp_path, "failed", {"SLURM_ARRAY_JOB_ID": "4200", "SLURM_ARRAY_TASK_ID": "1"})
     files = list((root / "val").iterdir())
     m = re.search(SERVER_FILE_RE % "4200", files[0].name)
     assert m and m.group(2) == "1"
     beat = last_beat_line(files[0])
-    assert beat["state"] == "failed" and beat["stage"] == "embed"
+    assert beat["state"] == "failed" and beat["stage"] == "embed" and beat["run_id"] == "val-4200"
 
 
 @pytest.mark.parametrize("name", ["job.sbatch", "array.sbatch"])
@@ -193,3 +197,23 @@ def test_hb_uses_real_validator_interface(name):
     assert 'job_id=os.environ["SLURM_JOB_ID"]' in text and 'os.environ.get("SLURM_PROCID", "0")' in text
     assert "h.announce()" in text and "h.beat(force=True)" in text
     assert "--run-id" not in text and "--state" not in text
+
+
+@pytest.mark.parametrize("name", ["job.sbatch", "array.sbatch"])
+def test_hb_post_failure_is_non_fatal(name, tmp_path):
+    env = {"SLURM_ARRAY_JOB_ID": "4200", "SLURM_ARRAY_TASK_ID": "0"}
+    root, err = run_hb(name, tmp_path, "ok", env, script=str(tmp_path / "missing" / "validator_heartbeat.py"))
+    log = next((root / "val").iterdir())
+    assert last_beat_line(log)["state"] == "ok"
+    assert "validator POST skipped" in err
+
+
+@pytest.mark.parametrize("name", ["job.sbatch", "array.sbatch"])
+def test_slurm_log_root_is_required_and_hardcoded_nowhere(name):
+    tpl = TPL / "slurm" / name
+    text = tpl.read_text()
+    assert "slurm_log_root" in declared(text)
+    assert "SLURM_LOG_ROOT:-" not in text and "_run/slurm}" not in text
+    values = values_for(text)
+    values.pop("slurm_log_root")
+    assert run_render(tpl, values).returncode != 0
