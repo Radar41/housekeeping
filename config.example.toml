@@ -56,3 +56,19 @@ timeout_s = 300
 url = "http://andromeda:8000"
 roles_allowed = ["reader", "coder"]
 enabled = false
+
+[tasks]
+log = "logs/tasks.tsv"
+data_dir = "/home/radar-41-0/data/housekeeping/tasks"
+inventory_dir = "/home/radar-41-0/data/housekeeping/inventory"
+ns = "prod"
+card_max_chars = 1200
+max_attempts = 2
+poll_interval_s = 10
+request_timeout_s = 180
+router_url = "http://127.0.0.1:8000"
+
+[tasks.memgraph]
+uri = "bolt://127.0.0.1:7687"
+user_env = "MEMGRAPH_USER"          # empty or unset means no auth
+password_env = "MEMGRAPH_PASSWORD"
